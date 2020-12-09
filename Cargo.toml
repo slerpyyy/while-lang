@@ -1,0 +1,9 @@
+[package]
+name = "while-lang"
+version = "0.1.0"
+authors = ["Aaron Bies <48803074+slerpyyy@users.noreply.github.com>"]
+edition = "2018"
+
+[dependencies]
+num-traits = "0.2"
+num-bigint = "0.3"
