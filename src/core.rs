@@ -1,5 +1,4 @@
-use std::{convert::TryFrom, unreachable};
-use std::convert::TryInto;
+use std::{convert::{TryFrom, TryInto}, unreachable};
 use std::{fmt, collections::HashMap};
 use num_bigint::BigUint;
 use num_integer::Roots;
@@ -129,6 +128,25 @@ impl Prog {
         let mut map = HashMap::<Index, Index>::new();
         let mut next_available = 0;
         recurse(&mut self.inst, &mut map, &mut next_available);
+        self
+    }
+
+    #[must_use]
+    pub fn inline_blocks(mut self) -> Self {
+        fn recurse(inst_vec: Vec<Inst>) -> Vec<Inst> {
+            inst_vec.into_iter().flat_map(|inst| match inst {
+                Inst::Block { inner } => recurse(inner),
+                Inst::While { cond, inner } => {
+                    vec![Inst::While {cond, inner: recurse(inner)}]
+                }
+                Inst::For { num, inner } => {
+                    vec![Inst::For {num, inner: recurse(inner)}]
+                }
+                s => vec![s],
+            }).collect()
+        }
+
+        self.inst = recurse(self.inst);
         self
     }
 
@@ -288,17 +306,17 @@ impl TryFrom<BigUint> for Prog {
     }
 }
 
-impl TryFrom<Prog> for BigUint {
-    type Error = ();
-
-    fn try_from(prog: Prog) -> Result<Self, Self::Error> {
-        fn recurse(_inst_vec: &[Inst]) -> Result<BigUint, ()> {
-            todo!();
-        }
-
-        recurse(&prog.inst)
-    }
-}
+//impl TryFrom<Prog> for BigUint {
+//    type Error = ();
+//
+//    fn try_from(prog: Prog) -> Result<Self, Self::Error> {
+//        fn recurse(_inst_vec: &[Inst]) -> Result<BigUint, ()> {
+//            todo!();
+//        }
+//
+//        recurse(&prog.inst)
+//    }
+//}
 
 #[cfg(test)]
 mod test {
@@ -405,7 +423,20 @@ od
     fn from_big_int_simple() {
         let num: BigUint = 13499359_u64.into();
         let prog: Prog = num.try_into().unwrap();
-        println!("{}", prog);
+
+        let expected = "\
+[
+  while x22 /= 0 do
+    [
+      x0 := x0 + x0;
+      x0 := x0 + x0;
+    ]
+  od
+  x10 := x1 + x1;
+]
+";
+
+        assert_eq!(prog.to_string(), expected);
     }
 
     #[test]
@@ -417,6 +448,21 @@ od
 98918915193172285526551142584434955736640059829711203281957250872373140089228\
 8209387853483996163716217775929", 10).unwrap();
         let prog: Prog = num.try_into().unwrap();
-        println!("{}", prog);
+
+        let result = prog.inline_blocks().to_string();
+        let expected = "\
+x2 := 8;
+x3 := 16;
+x4 := 32;
+while x4 /= 0 do
+  x10 := x3 + x10;
+  x4 := x4 - x2;
+  while x2 /= 0 do
+    x10 := 1;
+  od
+od
+";
+
+        assert_eq!(result, expected);
     }
 }
