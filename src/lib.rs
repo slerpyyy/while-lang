@@ -1,4 +1,5 @@
-#![warn(clippy::all)]
+#![warn(clippy::all, clippy::nursery, clippy::pedantic)]
+#![allow(clippy::wildcard_imports)]
 
 mod core;
 mod lexer;

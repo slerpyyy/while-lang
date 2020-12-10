@@ -1,5 +1,9 @@
+use std::{convert::TryFrom, unreachable};
+use std::convert::TryInto;
 use std::{fmt, collections::HashMap};
 use num_bigint::BigUint;
+use num_integer::Roots;
+use num_traits::NumOps;
 
 pub type Index = usize;
 pub type Value = BigUint;
@@ -42,6 +46,7 @@ impl Prog {
 
     #[must_use]
     pub fn highest_index(&self) -> Index {
+
         fn recurse(inst_vec: &[Inst]) -> Index {
             let mut highest = 0;
             for inst in inst_vec {
@@ -82,7 +87,7 @@ impl Prog {
             map: &mut HashMap::<Index, Index>,
             next_available: &mut Index
         ) {
-            *var = map.get(&var).cloned().unwrap_or_else(|| {
+            *var = map.get(var).cloned().unwrap_or_else(|| {
                 let new_var = *next_available;
                 map.insert(*var, new_var);
                 *next_available += 1;
@@ -161,7 +166,7 @@ impl Prog {
         let reserved = self.highest_index() + 1;
         let mut next_available = reserved + 1;
         recurse(&mut self.inst, reserved, &mut next_available);
-        self.reindex_vars()
+        self
     }
 }
 
@@ -221,25 +226,78 @@ impl fmt::Display for Prog {
 
 #[inline]
 #[must_use]
-pub fn pair(x: u32, y: u32) -> u32 {
-    let sum = x + y;
-    let tri = sum * (sum + 1) / 2;
+pub fn pair<T>(x: T, y: T) -> T
+where T: Clone + From<u8> + NumOps {
+    let sum: T = x + y.clone();
+    let tri: T = sum.clone() * (sum + T::from(1)) / T::from(2);
     tri + y
 }
 
 #[inline]
 #[must_use]
-pub fn pair_inv(z: u32) -> (u32, u32) {
-    let z_off = (8 * z + 1) as f64;
-    let mut sum = (z_off.sqrt() as u32 - 1) / 2;
-    let mut tri = sum * (sum + 1) / 2;
-    if z < tri {
-        sum -= 1;
-        tri = sum * (sum + 1) / 2;
-    }
-    let y = z - tri;
-    let x = sum - y;
+pub fn pair_inv<T>(z: T) -> (T, T)
+where T: Clone + From<u8> + NumOps + Roots {
+    let z_off: T = T::from(8) * z.clone() + T::one();
+    let sum: T = (Roots::sqrt(&z_off) - T::one()) / T::from(2);
+    let tri: T = sum.clone() * (sum.clone() + T::one()) / T::from(2);
+    let y: T = z - tri;
+    let x: T = sum - y.clone();
     (x, y)
+}
+
+impl TryFrom<BigUint> for Prog {
+    type Error = ();
+
+    fn try_from(num: BigUint) -> Result<Self, Self::Error> {
+        fn recurse(num: BigUint) -> Result<Inst, ()> {
+            let kind: u8 = (num.clone() % 5_u8).try_into().map_err(|_| ())?;
+            let num: BigUint = num / 5_u8;
+            let inst: Inst = match kind {
+                0..=2 => {
+                    let (i, c) = pair_inv(num);
+                    let i = i.try_into().map_err(|_| ())?;
+                    if kind == 2 {
+                        Inst::Set { target: i, value: c }
+                    } else {
+                        let (j, k) = pair_inv(c);
+                        let j = j.try_into().map_err(|_| ())?;
+                        let k = k.try_into().map_err(|_| ())?;
+                        if kind == 0 {
+                            Inst::Add { target: i, left: j, right: k }
+                        } else {
+                            Inst::Sub { target: i, left: j, right: k }
+                        }
+                    }
+                },
+                3 => {
+                    let (i, p) = pair_inv(num);
+                    let i = i.try_into().map_err(|_| ())?;
+                    Inst::While { cond: i, inner: vec![recurse(p)?] }
+                },
+                4 => {
+                    let (p1, p2) = pair_inv(num);
+                    Inst::Block { inner: vec![recurse(p1)?, recurse(p2)? ] }
+                },
+                _ => unreachable!(),
+            };
+
+            Ok(inst)
+        }
+
+        Ok(Self {inst: vec![recurse(num)?]})
+    }
+}
+
+impl TryFrom<Prog> for BigUint {
+    type Error = ();
+
+    fn try_from(prog: Prog) -> Result<Self, Self::Error> {
+        fn recurse(_inst_vec: &[Inst]) -> Result<BigUint, ()> {
+            todo!();
+        }
+
+        recurse(&prog.inst)
+    }
 }
 
 #[cfg(test)]
@@ -258,13 +316,13 @@ mod test {
 
     #[test]
     fn pair_id_big() {
-        let mut n = std::u32::MAX / 8;
+        let mut n = BigUint::from(std::u32::MAX);
         for _ in 0..1000 {
-            let (x, y) = pair_inv(n);
-            let z = pair(x, y);
+            let (x, y) = pair_inv(n.clone());
+            let z = pair(x.clone(), y.clone());
 
-            assert_eq!(n, z, "in={}, x={}, y={}, out={}", n, x, y, z);
-            n -= 1;
+            assert_eq!(&n, &z, "in={}, x={}, y={}, out={}", &n, &x, &y, &z);
+            n = n + BigUint::from(1_u8);
         }
     }
 
@@ -340,6 +398,25 @@ od
         println!("{}", prog);
 
         let prog = prog.translate_while();
+        println!("{}", prog);
+    }
+
+    #[test]
+    fn from_big_int_simple() {
+        let num: BigUint = 13499359_u64.into();
+        let prog: Prog = num.try_into().unwrap();
+        println!("{}", prog);
+    }
+
+    #[test]
+    fn from_big_int_huge() {
+        let num = BigUint::parse_bytes(b"691853327116586224480045384225521476\
+83685492673360315133894494533980092400299925515080206483860328907198635248416\
+01338123531914063927268977543422246789260678743615690700215522205213880106150\
+08170881095624326801692349315880372298245254591564995577742001392318332048935\
+98918915193172285526551142584434955736640059829711203281957250872373140089228\
+8209387853483996163716217775929", 10).unwrap();
+        let prog: Prog = num.try_into().unwrap();
         println!("{}", prog);
     }
 }
