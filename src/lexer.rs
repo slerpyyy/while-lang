@@ -44,7 +44,9 @@ impl Token {
 
 #[must_use]
 fn parse_number<T>(iter: &mut Peekable<impl Iterator<Item = char>>) -> T
-where T: From<u8> + Add<Output = T> + Mul<Output = T> {
+where
+    T: From<u8> + Add<Output = T> + Mul<Output = T>,
+{
     let mut num = T::from(0);
     while let Some(&c @ '0'..='9') = iter.peek() {
         num = num * T::from(10) + T::from(c as u8 - b'0');
