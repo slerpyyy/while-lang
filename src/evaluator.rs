@@ -41,8 +41,8 @@ impl Evaluator {
             }
             Inst::While { cond, inner } => {
                 if self.state[cond] != 0_u8.into() {
-                    self.work.extend(inner.into_iter().rev());
                     self.work.push(inst);
+                    self.work.extend(inner.into_iter().rev());
                 }
             }
             Inst::For { num, inner } => {
@@ -77,6 +77,26 @@ mod test {
             ] },
         ] };
 
+        let mut eval = Evaluator::new(prog);
+        eval.run();
+
+        assert_eq!(eval.state[0], 9_u8.into());
+        assert_eq!(eval.state[1], 4_u8.into());
+        assert_eq!(eval.state[2], 3_u8.into());
+    }
+
+    #[test]
+    fn simple_while_program() {
+        let prog = Prog { inst: vec![
+            Inst::Set { target: 1, value: 2_u8.into() },
+            Inst::Set { target: 2, value: 3_u8.into() },
+            Inst::For { num: 2, inner: vec![
+                Inst::Add { target: 0, left: 0, right: 2 },
+                Inst::Sub { target: 1, left: 0, right: 1 },
+            ] },
+        ] };
+
+        let prog = prog.translate_while();
         let mut eval = Evaluator::new(prog);
         eval.run();
 
