@@ -42,10 +42,8 @@ pub struct Prog {
 }
 
 impl Prog {
-
     #[must_use]
     pub fn highest_index(&self) -> Index {
-
         fn recurse(inst_vec: &[Inst]) -> Index {
             let mut highest = 0;
             for inst in inst_vec {
@@ -80,7 +78,6 @@ impl Prog {
 
     #[must_use]
     pub fn reindex_vars(mut self) -> Self {
-
         fn reindex_single(
             var: &mut Index,
             map: &mut HashMap::<Index, Index>,
@@ -152,7 +149,6 @@ impl Prog {
 
     #[must_use]
     pub fn translate_while(mut self) -> Self {
-
         fn recurse(inst_vec: &mut Vec<Inst>, reserved: Index, next_available: &mut Index) {
             for inst in inst_vec {
                 match inst {
@@ -306,17 +302,51 @@ impl TryFrom<BigUint> for Prog {
     }
 }
 
-//impl TryFrom<Prog> for BigUint {
-//    type Error = ();
-//
-//    fn try_from(prog: Prog) -> Result<Self, Self::Error> {
-//        fn recurse(_inst_vec: &[Inst]) -> Result<BigUint, ()> {
-//            todo!();
-//        }
-//
-//        recurse(&prog.inst)
-//    }
-//}
+impl TryFrom<Prog> for BigUint {
+    type Error = ();
+
+    fn try_from(prog: Prog) -> Result<Self, Self::Error> {
+        fn recurse(inst_vec: &[Inst]) -> Result<BigUint, ()> {
+            let first = match inst_vec.first().ok_or(())? {
+                Inst::Add { target, left, right } => {
+                    let num: BigUint = pair((*left).into(), (*right).into());
+                    let num: BigUint = pair((*target).into(), num);
+                    BigUint::from(5_u8) * num
+                }
+                Inst::Sub { target, left, right } => {
+                    let num: BigUint = pair((*left).into(), (*right).into());
+                    let num: BigUint = pair((*target).into(), num);
+                    BigUint::from(5_u8) * num + BigUint::from(1_u8)
+                }
+                Inst::Set { target, value } => {
+                    let num: BigUint = pair((*target).into(), value.clone());
+                    BigUint::from(5_u8) * num + BigUint::from(2_u8)
+                }
+                Inst::While { cond, inner } => {
+                    let num: BigUint = pair((*cond).into(), recurse(inner)?);
+                    BigUint::from(5_u8) * num + BigUint::from(3_u8)
+                }
+                Inst::Block { inner } => {
+                    recurse(inner)?
+                }
+                Inst::For { .. } => {
+                    return Err(());
+                }
+            };
+
+            let num = if inst_vec.len() < 2 {
+                first
+            } else {
+                let num = pair(first, recurse(&inst_vec[1..])?);
+                BigUint::from(5_u8) * num + BigUint::from(4_u8)
+            };
+
+            Ok(num)
+        }
+
+        recurse(&prog.inst)
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -465,5 +495,23 @@ od
 ";
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn from_into_consistency() {
+        let expected = BigUint::parse_bytes(
+            b"6353471964769560710236650382363524229281885364863",
+            10,
+        ).unwrap();
+
+        let num = &expected;
+        let prog = Prog::try_from(num.clone()).unwrap();
+        let num = BigUint::try_from(prog).unwrap();
+        let prog = Prog::try_from(num.clone()).unwrap();
+        let num = BigUint::try_from(prog).unwrap();
+        let prog = Prog::try_from(num.clone()).unwrap();
+        let num = BigUint::try_from(prog).unwrap();
+
+        assert_eq!(expected, num);
     }
 }
