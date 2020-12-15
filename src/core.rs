@@ -196,10 +196,6 @@ impl fmt::Display for Prog {
         fn fmt_recurse(f: &mut fmt::Formatter<'_>, inst_vec: &[Inst], indent: u32) -> fmt::Result {
             for inst in inst_vec {
                 match inst {
-                    Inst::Set { target, value } => {
-                        fmt_indent(f, indent)?;
-                        writeln!(f, "x{} := {};", target, value)?;
-                    }
                     Inst::Add { target, left, right } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "x{} := x{} + x{};", target, left, right)?;
@@ -207,6 +203,10 @@ impl fmt::Display for Prog {
                     Inst::Sub { target, left, right } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "x{} := x{} - x{};", target, left, right)?;
+                    }
+                    Inst::Set { target, value } => {
+                        fmt_indent(f, indent)?;
+                        writeln!(f, "x{} := {};", target, value)?;
                     }
                     Inst::Block { inner } => {
                         fmt_indent(f, indent)?;

@@ -37,10 +37,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "source-span"
+version = "2.2.0"
+source = "git+https://github.com/slerpyyy/source-span#368acd32b3a6926bb02eb225cc54a8df8bc1c321"
+
+[[package]]
 name = "while-lang"
 version = "0.1.0"
 dependencies = [
  "num-bigint",
  "num-integer",
  "num-traits",
+ "source-span",
 ]

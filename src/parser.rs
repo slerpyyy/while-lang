@@ -125,9 +125,9 @@ mod test {
     #[test]
     fn assign_simple() {
         let tokens = vec![
-            Token::new(TokenKind::Var(2)),
-            Token::new(TokenKind::Eq),
-            Token::new(TokenKind::Const(5_u8.into())),
+            Token::no_span(TokenKind::Var(2)),
+            Token::no_span(TokenKind::Eq),
+            Token::no_span(TokenKind::Const(5_u8.into())),
         ];
 
         let result = parse(tokens).inst;
@@ -142,20 +142,20 @@ mod test {
     #[test]
     fn assign_three_times() {
         let tokens = vec![
-            Token::new(TokenKind::Var(0)),
-            Token::new(TokenKind::Eq),
-            Token::new(TokenKind::Const(8_u8.into())),
-            Token::new(TokenKind::Semicolon),
-            Token::new(TokenKind::LeftBracket),
-            Token::new(TokenKind::Var(1)),
-            Token::new(TokenKind::Eq),
-            Token::new(TokenKind::Const(16_u8.into())),
-            Token::new(TokenKind::Semicolon),
-            Token::new(TokenKind::Var(2)),
-            Token::new(TokenKind::Eq),
-            Token::new(TokenKind::Const(32_u8.into())),
-            Token::new(TokenKind::Semicolon),
-            Token::new(TokenKind::RightBracket),
+            Token::no_span(TokenKind::Var(0)),
+            Token::no_span(TokenKind::Eq),
+            Token::no_span(TokenKind::Const(8_u8.into())),
+            Token::no_span(TokenKind::Semicolon),
+            Token::no_span(TokenKind::LeftBracket),
+            Token::no_span(TokenKind::Var(1)),
+            Token::no_span(TokenKind::Eq),
+            Token::no_span(TokenKind::Const(16_u8.into())),
+            Token::no_span(TokenKind::Semicolon),
+            Token::no_span(TokenKind::Var(2)),
+            Token::no_span(TokenKind::Eq),
+            Token::no_span(TokenKind::Const(32_u8.into())),
+            Token::no_span(TokenKind::Semicolon),
+            Token::no_span(TokenKind::RightBracket),
         ];
 
         let result = parse(tokens).inst;
@@ -184,15 +184,15 @@ mod test {
     #[test]
     fn while_simple() {
         let tokens = vec![
-            Token::new(TokenKind::While),
-            Token::new(TokenKind::Var(2)),
-            Token::new(TokenKind::Neq),
-            Token::new(TokenKind::Const(0_u8.into())),
-            Token::new(TokenKind::Do),
-            Token::new(TokenKind::Var(2)),
-            Token::new(TokenKind::Eq),
-            Token::new(TokenKind::Const(0_u8.into())),
-            Token::new(TokenKind::Od),
+            Token::no_span(TokenKind::While),
+            Token::no_span(TokenKind::Var(2)),
+            Token::no_span(TokenKind::Neq),
+            Token::no_span(TokenKind::Const(0_u8.into())),
+            Token::no_span(TokenKind::Do),
+            Token::no_span(TokenKind::Var(2)),
+            Token::no_span(TokenKind::Eq),
+            Token::no_span(TokenKind::Const(0_u8.into())),
+            Token::no_span(TokenKind::Od),
         ];
 
         let result = parse(tokens).inst;
@@ -210,15 +210,15 @@ mod test {
     #[test]
     fn for_simple() {
         let tokens = vec![
-            Token::new(TokenKind::For),
-            Token::new(TokenKind::Var(0)),
-            Token::new(TokenKind::Do),
-            Token::new(TokenKind::Var(2)),
-            Token::new(TokenKind::Eq),
-            Token::new(TokenKind::Var(2)),
-            Token::new(TokenKind::Plus),
-            Token::new(TokenKind::Var(1)),
-            Token::new(TokenKind::Od),
+            Token::no_span(TokenKind::For),
+            Token::no_span(TokenKind::Var(0)),
+            Token::no_span(TokenKind::Do),
+            Token::no_span(TokenKind::Var(2)),
+            Token::no_span(TokenKind::Eq),
+            Token::no_span(TokenKind::Var(2)),
+            Token::no_span(TokenKind::Plus),
+            Token::no_span(TokenKind::Var(1)),
+            Token::no_span(TokenKind::Od),
         ];
 
         let result = parse(tokens).inst;
