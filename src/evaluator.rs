@@ -1,19 +1,19 @@
+use std::collections::HashMap;
+
 use crate::*;
-use num_bigint::BigUint;
+use num_traits::Zero;
 
 pub struct Evaluator {
     pub work: Vec<Inst>,
-    pub state: Vec<BigUint>,
+    pub state: HashMap<Index, Value>,
 }
 
 impl Evaluator {
     #[must_use]
     pub fn new(prog: Prog) -> Self {
-        let num_states = prog.highest_index() + 1;
-        let state = vec![BigUint::from(0_u8); num_states];
         let mut work = prog.inst;
         work.reverse();
-        Self { state, work }
+        Self { state: HashMap::new(), work }
     }
 
     pub fn step(&mut self) -> bool {
@@ -22,34 +22,35 @@ impl Evaluator {
             None => return false,
         };
 
-        match inst.clone() {
+        match inst {
             Inst::Add { target, left, right } => {
-                let left = self.state[left].clone();
-                let right = self.state[right].clone();
-                self.state[target] = left + right;
+                let left = self.state.get(&left).cloned().unwrap_or_default();
+                let right = self.state.get(&right).cloned().unwrap_or_default();
+                self.state.insert(target, left + right);
             }
             Inst::Sub { target, left, right } => {
-                let left = self.state[left].clone();
-                let right = self.state[right].clone();
-                self.state[target] = left - right;
+                let left = self.state.get(&left).cloned().unwrap_or_default();
+                let right = self.state.get(&right).cloned().unwrap_or_default();
+                self.state.insert(target, left - right);
             }
             Inst::Set { target, value } => {
-                self.state[target] = value.clone();
+                self.state.insert(target, value);
             }
             Inst::Block { inner } => {
                 self.work.extend(inner.into_iter().rev());
             }
-            Inst::While { cond, inner } => {
-                if self.state[cond] != 0_u8.into() {
-                    self.work.push(inst);
-                    self.work.extend(inner.into_iter().rev());
+            Inst::While { ref cond, ref inner } => {
+                if self.state.get(cond).filter(|n| !n.is_zero()).is_some() {
+                    self.work.push(inst.clone());
+                    self.work.extend(inner.clone().into_iter().rev());
                 }
             }
             Inst::For { num, inner } => {
-                let mut iter = self.state[num].clone();
-                while iter > 0_u8.into() {
-                    self.work.extend(inner.clone().into_iter().rev());
-                    iter = iter - BigUint::from(1_u8);
+                if let Some(mut num) = self.state.get(&num).cloned() {
+                    while !num.is_zero() {
+                        self.work.extend(inner.clone().into_iter().rev());
+                        num -= 1_u8;
+                    }
                 }
             }
         }
@@ -69,30 +70,30 @@ mod test {
     #[test]
     fn simple_for_program() {
         let prog = Prog { inst: vec![
-            Inst::Set { target: 1, value: 2_u8.into() },
-            Inst::Set { target: 2, value: 3_u8.into() },
-            Inst::For { num: 2, inner: vec![
-                Inst::Add { target: 0, left: 0, right: 2 },
-                Inst::Sub { target: 1, left: 0, right: 1 },
+            Inst::Set { target: 1_u8.into(), value: 2_u8.into() },
+            Inst::Set { target: 2_u8.into(), value: 3_u8.into() },
+            Inst::For { num: 2_u8.into(), inner: vec![
+                Inst::Add { target: 0_u8.into(), left: 0_u8.into(), right: 2_u8.into() },
+                Inst::Sub { target: 1_u8.into(), left: 0_u8.into(), right: 1_u8.into() },
             ] },
         ] };
 
         let mut eval = Evaluator::new(prog);
         eval.run();
 
-        assert_eq!(eval.state[0], 9_u8.into());
-        assert_eq!(eval.state[1], 4_u8.into());
-        assert_eq!(eval.state[2], 3_u8.into());
+        assert_eq!(eval.state[&0_u8.into()], 9_u8.into());
+        assert_eq!(eval.state[&1_u8.into()], 4_u8.into());
+        assert_eq!(eval.state[&2_u8.into()], 3_u8.into());
     }
 
     #[test]
     fn simple_while_program() {
         let prog = Prog { inst: vec![
-            Inst::Set { target: 1, value: 2_u8.into() },
-            Inst::Set { target: 2, value: 3_u8.into() },
-            Inst::For { num: 2, inner: vec![
-                Inst::Add { target: 0, left: 0, right: 2 },
-                Inst::Sub { target: 1, left: 0, right: 1 },
+            Inst::Set { target: 1_u8.into(), value: 2_u8.into() },
+            Inst::Set { target: 2_u8.into(), value: 3_u8.into() },
+            Inst::For { num: 2_u8.into(), inner: vec![
+                Inst::Add { target: 0_u8.into(), left: 0_u8.into(), right: 2_u8.into() },
+                Inst::Sub { target: 1_u8.into(), left: 0_u8.into(), right: 1_u8.into() },
             ] },
         ] };
 
@@ -100,8 +101,8 @@ mod test {
         let mut eval = Evaluator::new(prog);
         eval.run();
 
-        assert_eq!(eval.state[0], 9_u8.into());
-        assert_eq!(eval.state[1], 4_u8.into());
-        assert_eq!(eval.state[2], 3_u8.into());
+        assert_eq!(eval.state[&0_u8.into()], 9_u8.into());
+        assert_eq!(eval.state[&1_u8.into()], 4_u8.into());
+        assert_eq!(eval.state[&2_u8.into()], 3_u8.into());
     }
 }

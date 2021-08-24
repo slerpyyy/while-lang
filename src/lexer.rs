@@ -1,10 +1,14 @@
 use crate::*;
-use std::{iter::Peekable, ops::{Add, Mul}, panic};
-use source_span::{DEFAULT_METRICS, Position, Span};
+use source_span::{Position, Span, DEFAULT_METRICS};
+use std::{
+    iter::Peekable,
+    ops::{Add, Mul},
+    panic,
+};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenKind {
-    Var(Index),
+    Var(Value),
     Const(Value),
     Eq,
     Neq,
@@ -33,13 +37,16 @@ impl Token {
 
     #[must_use]
     pub fn no_span(kind: TokenKind) -> Self {
-        Self { kind, span: Span::default() }
+        Self {
+            kind,
+            span: Span::default(),
+        }
     }
 
     #[must_use]
-    pub const fn var(&self) -> Option<Index> {
+    pub const fn var(&self) -> Option<&Value> {
         match self.kind {
-            TokenKind::Var(k) => Some(k),
+            TokenKind::Var(ref k) => Some(k),
             _ => None,
         }
     }
@@ -126,9 +133,9 @@ pub fn lex(code: &str) -> Vec<Token> {
             'w' => {
                 iter.next();
                 if iter.next() == Some('h')
-                && iter.next() == Some('i')
-                && iter.next() == Some('l')
-                && iter.next() == Some('e')
+                    && iter.next() == Some('i')
+                    && iter.next() == Some('l')
+                    && iter.next() == Some('e')
                 {
                     pos.shift('w', &DEFAULT_METRICS);
                     pos.shift('h', &DEFAULT_METRICS);
@@ -142,8 +149,7 @@ pub fn lex(code: &str) -> Vec<Token> {
             }
             'f' => {
                 iter.next();
-                if iter.next() == Some('o')
-                && iter.next() == Some('r') {
+                if iter.next() == Some('o') && iter.next() == Some('r') {
                     pos.shift('f', &DEFAULT_METRICS);
                     pos.shift('o', &DEFAULT_METRICS);
                     pos.shift('r', &DEFAULT_METRICS);
@@ -193,18 +199,14 @@ mod test {
 
     #[test]
     fn small_program() {
-        let code = "\
-x0 := 32;
-x16 := 25;
-";
-
+        let code = "x0 := 32;\nx16 := 25;";
         let tokens = lex(code);
         let expected: Vec<Token> = vec![
-            Token::new(TokenKind::Var(0), Span::new(Position::new(0, 0), Position::new(0, 2), Position::end())),
+            Token::new(TokenKind::Var(0_u8.into()), Span::new(Position::new(0, 0), Position::new(0, 2), Position::end())),
             Token::new(TokenKind::Eq, Span::new(Position::new(0, 3), Position::new(0, 5), Position::end())),
             Token::new(TokenKind::Const(32_u8.into()), Span::new(Position::new(0, 6), Position::new(0, 8), Position::end())),
             Token::new(TokenKind::Semicolon, Span::new(Position::new(0, 8), Position::new(0, 9), Position::end())),
-            Token::new(TokenKind::Var(16), Span::new(Position::new(1, 0), Position::new(1, 3), Position::end())),
+            Token::new(TokenKind::Var(16_u8.into()), Span::new(Position::new(1, 0), Position::new(1, 3), Position::end())),
             Token::new(TokenKind::Eq, Span::new(Position::new(1, 4), Position::new(1, 6), Position::end())),
             Token::new(TokenKind::Const(25_u8.into()), Span::new(Position::new(1, 7), Position::new(1, 9), Position::end())),
             Token::new(TokenKind::Semicolon, Span::new(Position::new(1, 9), Position::new(1, 10), Position::end())),
@@ -220,33 +222,33 @@ x16 := 25;
         let expected = vec![
             TokenKind::LeftBracket,
             TokenKind::LeftBracket,
-            TokenKind::Var(0),
+            TokenKind::Var(0_u8.into()),
             TokenKind::Eq,
             TokenKind::Const(32_u8.into()),
             TokenKind::Semicolon,
             TokenKind::LeftBracket,
-            TokenKind::Var(1),
+            TokenKind::Var(1_u8.into()),
             TokenKind::Eq,
             TokenKind::Const(25_u8.into()),
             TokenKind::Semicolon,
-            TokenKind::Var(2),
+            TokenKind::Var(2_u8.into()),
             TokenKind::Eq,
-            TokenKind::Var(0),
+            TokenKind::Var(0_u8.into()),
             TokenKind::Plus,
-            TokenKind::Var(1),
+            TokenKind::Var(1_u8.into()),
             TokenKind::RightBracket,
             TokenKind::RightBracket,
             TokenKind::Semicolon,
             TokenKind::While,
-            TokenKind::Var(2),
+            TokenKind::Var(2_u8.into()),
             TokenKind::Neq,
             TokenKind::Const(0_u8.into()),
             TokenKind::Do,
-            TokenKind::Var(2),
+            TokenKind::Var(2_u8.into()),
             TokenKind::Eq,
-            TokenKind::Var(2),
+            TokenKind::Var(2_u8.into()),
             TokenKind::Minus,
-            TokenKind::Var(1),
+            TokenKind::Var(1_u8.into()),
             TokenKind::Od,
             TokenKind::RightBracket,
         ];

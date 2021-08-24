@@ -5,7 +5,7 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>) -> Ve
     let mut out = Vec::new();
 
     while let Some(token) = tokens.peek() {
-        match token.kind {
+        match token.kind.clone() {
             TokenKind::Var(target) => {
                 tokens.next();
 
@@ -19,25 +19,13 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>) -> Ve
                     continue;
                 }
 
-                let left = left.var().unwrap();
+                let left = left.var().unwrap().clone();
                 let op = tokens.next().unwrap();
-                let right = tokens.next().and_then(|t| t.var()).unwrap();
+                let right = tokens.next().and_then(|t| t.var().cloned()).unwrap();
 
                 match op.kind {
-                    TokenKind::Plus => {
-                        out.push(Inst::Add {
-                            target,
-                            left,
-                            right,
-                        });
-                    }
-                    TokenKind::Minus => {
-                        out.push(Inst::Sub {
-                            target,
-                            left,
-                            right,
-                        });
-                    }
+                    TokenKind::Plus => out.push(Inst::Add { target, left, right }),
+                    TokenKind::Minus => out.push(Inst::Sub { target, left, right }),
                     _ => unreachable!(),
                 }
             }
@@ -61,7 +49,7 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>) -> Ve
             TokenKind::While => {
                 tokens.next();
 
-                let cond = tokens.next().and_then(|t| t.var()).unwrap();
+                let cond = tokens.next().and_then(|t| t.var().cloned()).unwrap();
 
                 if tokens.next().map(|t| t.kind) != Some(TokenKind::Neq)
                     || tokens.next().map(|t| t.kind) != Some(TokenKind::Const(0_u8.into()))
@@ -83,7 +71,7 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>) -> Ve
             TokenKind::For => {
                 tokens.next();
 
-                let num = tokens.next().and_then(|t| t.var()).unwrap();
+                let num = tokens.next().and_then(|t| t.var().cloned()).unwrap();
 
                 if tokens.next().map(|t| t.kind) != Some(TokenKind::Do) {
                     panic!()
@@ -123,16 +111,17 @@ mod test {
     use super::*;
 
     #[test]
+    #[rustfmt::ignore]
     fn assign_simple() {
         let tokens = vec![
-            Token::no_span(TokenKind::Var(2)),
+            Token::no_span(TokenKind::Var(2_u8.into())),
             Token::no_span(TokenKind::Eq),
             Token::no_span(TokenKind::Const(5_u8.into())),
         ];
 
         let result = parse(tokens).inst;
         let expected = vec![Inst::Set {
-            target: 2,
+            target: 2_u8.into(),
             value: 5_u8.into(),
         }];
 
@@ -140,18 +129,19 @@ mod test {
     }
 
     #[test]
+    #[rustfmt::ignore]
     fn assign_three_times() {
         let tokens = vec![
-            Token::no_span(TokenKind::Var(0)),
+            Token::no_span(TokenKind::Var(0_u8.into())),
             Token::no_span(TokenKind::Eq),
             Token::no_span(TokenKind::Const(8_u8.into())),
             Token::no_span(TokenKind::Semicolon),
             Token::no_span(TokenKind::LeftBracket),
-            Token::no_span(TokenKind::Var(1)),
+            Token::no_span(TokenKind::Var(1_u8.into())),
             Token::no_span(TokenKind::Eq),
             Token::no_span(TokenKind::Const(16_u8.into())),
             Token::no_span(TokenKind::Semicolon),
-            Token::no_span(TokenKind::Var(2)),
+            Token::no_span(TokenKind::Var(2_u8.into())),
             Token::no_span(TokenKind::Eq),
             Token::no_span(TokenKind::Const(32_u8.into())),
             Token::no_span(TokenKind::Semicolon),
@@ -161,17 +151,17 @@ mod test {
         let result = parse(tokens).inst;
         let expected = vec![
             Inst::Set {
-                target: 0,
+                target: 0_u8.into(),
                 value: 8_u8.into(),
             },
             Inst::Block {
                 inner: vec![
                     Inst::Set {
-                        target: 1,
+                        target: 1_u8.into(),
                         value: 16_u8.into(),
                     },
                     Inst::Set {
-                        target: 2,
+                        target: 2_u8.into(),
                         value: 32_u8.into(),
                     },
                 ],
@@ -182,14 +172,15 @@ mod test {
     }
 
     #[test]
+    #[rustfmt::ignore]
     fn while_simple() {
         let tokens = vec![
             Token::no_span(TokenKind::While),
-            Token::no_span(TokenKind::Var(2)),
+            Token::no_span(TokenKind::Var(2_u8.into())),
             Token::no_span(TokenKind::Neq),
             Token::no_span(TokenKind::Const(0_u8.into())),
             Token::no_span(TokenKind::Do),
-            Token::no_span(TokenKind::Var(2)),
+            Token::no_span(TokenKind::Var(2_u8.into())),
             Token::no_span(TokenKind::Eq),
             Token::no_span(TokenKind::Const(0_u8.into())),
             Token::no_span(TokenKind::Od),
@@ -197,9 +188,9 @@ mod test {
 
         let result = parse(tokens).inst;
         let expected = vec![Inst::While {
-            cond: 2,
+            cond: 2_u8.into(),
             inner: vec![Inst::Set {
-                target: 2,
+                target: 2_u8.into(),
                 value: 0_u8.into(),
             }],
         }];
@@ -208,26 +199,27 @@ mod test {
     }
 
     #[test]
+    #[rustfmt::ignore]
     fn for_simple() {
         let tokens = vec![
             Token::no_span(TokenKind::For),
-            Token::no_span(TokenKind::Var(0)),
+            Token::no_span(TokenKind::Var(0_u8.into())),
             Token::no_span(TokenKind::Do),
-            Token::no_span(TokenKind::Var(2)),
+            Token::no_span(TokenKind::Var(2_u8.into())),
             Token::no_span(TokenKind::Eq),
-            Token::no_span(TokenKind::Var(2)),
+            Token::no_span(TokenKind::Var(2_u8.into())),
             Token::no_span(TokenKind::Plus),
-            Token::no_span(TokenKind::Var(1)),
+            Token::no_span(TokenKind::Var(1_u8.into())),
             Token::no_span(TokenKind::Od),
         ];
 
         let result = parse(tokens).inst;
         let expected = vec![Inst::For {
-            num: 0,
+            num: 0_u8.into(),
             inner: vec![Inst::Add {
-                target: 2,
-                left: 2,
-                right: 1,
+                target: 2_u8.into(),
+                left: 2_u8.into(),
+                right: 1_u8.into(),
             }],
         }];
 
