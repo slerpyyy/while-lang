@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::TryInto};
 
 use crate::*;
 use num_traits::Zero;
@@ -53,6 +53,18 @@ impl Evaluator {
                     }
                 }
             }
+            Inst::Call { target, function, input } => {
+                let function = self.state.get(&function).cloned().unwrap_or_default();
+                let input = self.state.get(&input).cloned().unwrap_or_default();
+
+                let sub_routine: Prog = function.try_into().unwrap();
+                let mut eval = Evaluator::new(sub_routine);
+                eval.state.insert(0_u8.into(), input);
+
+                eval.run();
+                let output = eval.state[&0_u8.into()].clone();
+                self.state.insert(target, output);
+            },
         }
 
         true

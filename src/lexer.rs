@@ -1,3 +1,5 @@
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+
 use crate::*;
 use std::{iter::Peekable, ops::{Add, Mul, Range}, panic};
 
@@ -12,8 +14,11 @@ pub enum TokenKind {
     Minus,
     LeftBracket,
     RightBracket,
+    LeftParen,
+    RightParen,
     While,
     For,
+    Fn,
     Do,
     Od,
 }
@@ -59,7 +64,7 @@ where
 }
 
 #[must_use]
-pub fn lex(code: &str) -> Vec<Token> {
+pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> {
     let mut out = Vec::new();
     let mut iter = code.chars().peekable();
     let mut pos = 0;
@@ -122,12 +127,22 @@ pub fn lex(code: &str) -> Vec<Token> {
                 iter.next();
                 TokenKind::RightBracket
             }
+            '(' => {
+                pos += c.len_utf8();
+                iter.next();
+                TokenKind::LeftParen
+            }
+            ')' => {
+                pos += c.len_utf8();
+                iter.next();
+                TokenKind::RightParen
+            }
             'w' => {
                 iter.next();
                 if iter.next() == Some('h')
-                    && iter.next() == Some('i')
-                    && iter.next() == Some('l')
-                    && iter.next() == Some('e')
+                && iter.next() == Some('i')
+                && iter.next() == Some('l')
+                && iter.next() == Some('e')
                 {
                     pos += "while".len();
                     TokenKind::While
@@ -137,11 +152,16 @@ pub fn lex(code: &str) -> Vec<Token> {
             }
             'f' => {
                 iter.next();
-                if iter.next() == Some('o') && iter.next() == Some('r') {
-                    pos += "for".len();
-                    TokenKind::For
-                } else {
-                    panic!()
+                match iter.next() {
+                    Some('o') if iter.next() == Some('r') => {
+                        pos += "for".len();
+                        TokenKind::For
+                    }
+                    Some('n') => {
+                        pos += "fn".len();
+                        TokenKind::Fn
+                    }
+                    _ => panic!()
                 }
             }
             'd' => {
@@ -162,18 +182,25 @@ pub fn lex(code: &str) -> Vec<Token> {
                     panic!()
                 }
             }
-            ' ' | '\t' | '\n' => {
+            ' ' | '\t' | '\n' | '\r' => {
                 pos += c.len_utf8();
                 iter.next();
                 continue;
             }
-            _ => panic!(),
+            _ => {
+                pos += c.len_utf8();
+                return Err(
+                    Diagnostic::error()
+                        .with_message("Unexpected symbol")
+                        .with_labels(vec![Label::primary(file_id, start..pos)])
+                )
+            },
         };
 
         out.push(Token::new(kind, start..pos));
     }
 
-    out
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -183,7 +210,7 @@ mod test {
     #[test]
     fn small_program() {
         let code = "x0 := 32;\nx16 := 25;";
-        let mut tokens = lex(code).into_iter();
+        let mut tokens = lex(code, 0).unwrap().into_iter();
 
         assert_eq!(tokens.next(), Some(Token::new(TokenKind::Var(0_u8.into()), 0..2)));
         assert_eq!(tokens.next(), Some(Token::new(TokenKind::Eq, 3..5)));
@@ -198,7 +225,7 @@ mod test {
     #[test]
     fn simple_program_token_kind() {
         let code = "[[x0 := 32; [x1:=25;x2:=x0+x1]]; while x2 /= 0 do x2 := x2 - x1 od]";
-        let tokens = lex(code).into_iter().map(|t| t.kind).collect::<Vec<_>>();
+        let tokens = lex(code, 0).unwrap().into_iter().map(|t| t.kind).collect::<Vec<_>>();
         let expected = vec![
             TokenKind::LeftBracket,
             TokenKind::LeftBracket,

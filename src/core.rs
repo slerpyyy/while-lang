@@ -23,6 +23,11 @@ pub enum Inst {
         target: Index,
         value: Value,
     },
+    Call {
+        target: Index,
+        function: Index,
+        input: Index,
+    },
     Block {
         inner: Vec<Inst>,
     },
@@ -52,7 +57,7 @@ impl Prog {
                         highest = highest.max(target.clone());
                     }
                     Inst::Add {target, left, right} |
-                    Inst::Sub {target, left, right} => {
+                    Inst::Sub {target, left, right}  => {
                         highest = highest.max(target.clone());
                         highest = highest.max(left.clone());
                         highest = highest.max(right.clone());
@@ -67,6 +72,11 @@ impl Prog {
                     Inst::For {num, inner} => {
                         highest = highest.max(num.clone());
                         highest = highest.max(recurse(inner));
+                    }
+                    Inst::Call {target, function, input} => {
+                        highest = highest.max(target.clone());
+                        highest = highest.max(function.clone());
+                        highest = highest.max(input.clone());
                     }
                 }
             }
@@ -101,8 +111,8 @@ impl Prog {
                     Inst::Set { target, .. } => {
                         reindex_single(target, map, next_available);
                     }
-                    Inst::Add {target, left, right} |
-                    Inst::Sub {target, left, right} => {
+                    Inst::Add { target, left, right } |
+                    Inst::Sub { target, left, right } => {
                         reindex_single(target, map, next_available);
                         reindex_single(left, map, next_available);
                         reindex_single(right, map, next_available);
@@ -110,14 +120,19 @@ impl Prog {
                     Inst::Block { inner } => {
                         recurse(inner, map, next_available);
                     }
-                    Inst::While {cond, inner} => {
+                    Inst::While { cond, inner } => {
                         reindex_single(cond, map, next_available);
                         recurse(inner, map, next_available);
                     }
-                    Inst::For {num, inner} => {
+                    Inst::For { num, inner } => {
                         reindex_single(num, map, next_available);
                         recurse(inner, map, next_available);
                     }
+                    Inst::Call { target, function, input } => {
+                        reindex_single(target, map, next_available);
+                        reindex_single(function, map, next_available);
+                        reindex_single(input, map, next_available);
+                    },
                 }
             }
         }
@@ -234,6 +249,10 @@ impl fmt::Display for Prog {
                         fmt_indent(f, indent)?;
                         writeln!(f, "od")?;
                     }
+                    Inst::Call { target, function, input } => {
+                        fmt_indent(f, indent)?;
+                        writeln!(f, "x{} := {}({});", target, function, input)?;
+                    },
                 }
             }
             Ok(())
@@ -331,9 +350,7 @@ impl TryFrom<Prog> for BigUint {
                 Inst::Block { inner } => {
                     recurse(inner)?
                 }
-                Inst::For { .. } => {
-                    return Err(());
-                }
+                _ => return Err(()),
             };
 
             Ok(match tail {
