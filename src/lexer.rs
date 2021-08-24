@@ -1,10 +1,5 @@
 use crate::*;
-use source_span::{Position, Span, DEFAULT_METRICS};
-use std::{
-    iter::Peekable,
-    ops::{Add, Mul},
-    panic,
-};
+use std::{iter::Peekable, ops::{Add, Mul, Range}, panic};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenKind {
@@ -26,21 +21,18 @@ pub enum TokenKind {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Token {
     pub kind: TokenKind,
-    pub span: Span,
+    pub span: Range<usize>,
 }
 
 impl Token {
     #[must_use]
-    pub const fn new(kind: TokenKind, span: Span) -> Self {
+    pub const fn new(kind: TokenKind, span: Range<usize>) -> Self {
         Self { kind, span }
     }
 
     #[must_use]
     pub fn no_span(kind: TokenKind) -> Self {
-        Self {
-            kind,
-            span: Span::default(),
-        }
+        Self { kind, span: 0..0 }
     }
 
     #[must_use]
@@ -53,14 +45,14 @@ impl Token {
 }
 
 #[must_use]
-fn parse_number<T>(iter: &mut Peekable<impl Iterator<Item = char>>, pos: &mut Position) -> T
+fn parse_number<T>(iter: &mut Peekable<impl Iterator<Item = char>>, pos: &mut usize) -> T
 where
     T: From<u8> + Add<Output = T> + Mul<Output = T>,
 {
     let mut num = T::from(0);
     while let Some(&c @ '0'..='9') = iter.peek() {
         num = num * T::from(10) + T::from(c as u8 - b'0');
-        pos.shift(c, &DEFAULT_METRICS);
+        *pos += c.len_utf8();
         iter.next();
     }
     num
@@ -70,7 +62,7 @@ where
 pub fn lex(code: &str) -> Vec<Token> {
     let mut out = Vec::new();
     let mut iter = code.chars().peekable();
-    let mut pos = Position::new(0, 0);
+    let mut pos = 0;
 
     while let Some(&c) = iter.peek() {
         let start = pos;
@@ -80,53 +72,53 @@ pub fn lex(code: &str) -> Vec<Token> {
                 TokenKind::Const(num)
             }
             'x' => {
-                pos.shift(c, &DEFAULT_METRICS);
+                pos += c.len_utf8();
                 iter.next();
                 let num = parse_number(&mut iter, &mut pos);
                 TokenKind::Var(num)
             }
             ':' => {
-                pos.shift(c, &DEFAULT_METRICS);
+                pos += c.len_utf8();
                 iter.next();
                 if iter.next() == Some('=') {
-                    pos.shift('=', &DEFAULT_METRICS);
+                    pos += '='.len_utf8();
                     TokenKind::Eq
                 } else {
                     panic!()
                 }
             }
             '/' => {
-                pos.shift(c, &DEFAULT_METRICS);
+                pos += c.len_utf8();
                 iter.next();
                 if iter.next() == Some('=') {
-                    pos.shift('=', &DEFAULT_METRICS);
+                    pos += '='.len_utf8();
                     TokenKind::Neq
                 } else {
                     panic!()
                 }
             }
             ';' => {
-                pos.shift(c, &DEFAULT_METRICS);
+                pos += c.len_utf8();
                 iter.next();
                 TokenKind::Semicolon
             }
             '+' => {
-                pos.shift(c, &DEFAULT_METRICS);
+                pos += c.len_utf8();
                 iter.next();
                 TokenKind::Plus
             }
             '-' => {
-                pos.shift(c, &DEFAULT_METRICS);
+                pos += c.len_utf8();
                 iter.next();
                 TokenKind::Minus
             }
             '[' => {
-                pos.shift(c, &DEFAULT_METRICS);
+                pos += c.len_utf8();
                 iter.next();
                 TokenKind::LeftBracket
             }
             ']' => {
-                pos.shift(c, &DEFAULT_METRICS);
+                pos += c.len_utf8();
                 iter.next();
                 TokenKind::RightBracket
             }
@@ -137,11 +129,7 @@ pub fn lex(code: &str) -> Vec<Token> {
                     && iter.next() == Some('l')
                     && iter.next() == Some('e')
                 {
-                    pos.shift('w', &DEFAULT_METRICS);
-                    pos.shift('h', &DEFAULT_METRICS);
-                    pos.shift('i', &DEFAULT_METRICS);
-                    pos.shift('l', &DEFAULT_METRICS);
-                    pos.shift('e', &DEFAULT_METRICS);
+                    pos += "while".len();
                     TokenKind::While
                 } else {
                     panic!()
@@ -150,9 +138,7 @@ pub fn lex(code: &str) -> Vec<Token> {
             'f' => {
                 iter.next();
                 if iter.next() == Some('o') && iter.next() == Some('r') {
-                    pos.shift('f', &DEFAULT_METRICS);
-                    pos.shift('o', &DEFAULT_METRICS);
-                    pos.shift('r', &DEFAULT_METRICS);
+                    pos += "for".len();
                     TokenKind::For
                 } else {
                     panic!()
@@ -161,8 +147,7 @@ pub fn lex(code: &str) -> Vec<Token> {
             'd' => {
                 iter.next();
                 if iter.next() == Some('o') {
-                    pos.shift('d', &DEFAULT_METRICS);
-                    pos.shift('o', &DEFAULT_METRICS);
+                    pos += "do".len();
                     TokenKind::Do
                 } else {
                     panic!()
@@ -171,23 +156,21 @@ pub fn lex(code: &str) -> Vec<Token> {
             'o' => {
                 iter.next();
                 if iter.next() == Some('d') {
-                    pos.shift('o', &DEFAULT_METRICS);
-                    pos.shift('d', &DEFAULT_METRICS);
+                    pos += "od".len();
                     TokenKind::Od
                 } else {
                     panic!()
                 }
             }
             ' ' | '\t' | '\n' => {
-                pos.shift(c, &DEFAULT_METRICS);
+                pos += c.len_utf8();
                 iter.next();
                 continue;
             }
             _ => panic!(),
         };
 
-        let span = Span::new(start, pos, Position::end());
-        out.push(Token::new(kind, span));
+        out.push(Token::new(kind, start..pos));
     }
 
     out
@@ -200,19 +183,16 @@ mod test {
     #[test]
     fn small_program() {
         let code = "x0 := 32;\nx16 := 25;";
-        let tokens = lex(code);
-        let expected: Vec<Token> = vec![
-            Token::new(TokenKind::Var(0_u8.into()), Span::new(Position::new(0, 0), Position::new(0, 2), Position::end())),
-            Token::new(TokenKind::Eq, Span::new(Position::new(0, 3), Position::new(0, 5), Position::end())),
-            Token::new(TokenKind::Const(32_u8.into()), Span::new(Position::new(0, 6), Position::new(0, 8), Position::end())),
-            Token::new(TokenKind::Semicolon, Span::new(Position::new(0, 8), Position::new(0, 9), Position::end())),
-            Token::new(TokenKind::Var(16_u8.into()), Span::new(Position::new(1, 0), Position::new(1, 3), Position::end())),
-            Token::new(TokenKind::Eq, Span::new(Position::new(1, 4), Position::new(1, 6), Position::end())),
-            Token::new(TokenKind::Const(25_u8.into()), Span::new(Position::new(1, 7), Position::new(1, 9), Position::end())),
-            Token::new(TokenKind::Semicolon, Span::new(Position::new(1, 9), Position::new(1, 10), Position::end())),
-        ];
+        let mut tokens = lex(code).into_iter();
 
-        assert_eq!(tokens, expected);
+        assert_eq!(tokens.next(), Some(Token::new(TokenKind::Var(0_u8.into()), 0..2)));
+        assert_eq!(tokens.next(), Some(Token::new(TokenKind::Eq, 3..5)));
+        assert_eq!(tokens.next(), Some(Token::new(TokenKind::Const(32_u8.into()), 6..8)));
+        assert_eq!(tokens.next(), Some(Token::new(TokenKind::Semicolon, 8..9)));
+        assert_eq!(tokens.next(), Some(Token::new(TokenKind::Var(16_u8.into()), 10..13)));
+        assert_eq!(tokens.next(), Some(Token::new(TokenKind::Eq, 14..16)));
+        assert_eq!(tokens.next(), Some(Token::new(TokenKind::Const(25_u8.into()), 17..19)));
+        assert_eq!(tokens.next(), Some(Token::new(TokenKind::Semicolon, 19..20)));
     }
 
     #[test]
