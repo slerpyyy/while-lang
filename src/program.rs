@@ -144,9 +144,9 @@ impl Prog {
             }
         }
 
-        let mut next_available = BigUint::zero();
         let mut map = HashMap::new();
         map.insert(IndexV2::Int(BigUint::zero()), IndexV2::Int(BigUint::zero()));
+        let mut next_available = 1_u8.into();
         recurse(&mut self.inst, &mut map, &mut next_available);
         self
     }
@@ -226,15 +226,15 @@ impl fmt::Display for Prog {
                 match inst {
                     Inst::Add { target, left, right } => {
                         fmt_indent(f, indent)?;
-                        writeln!(f, "x{} := x{} + x{};", target, left, right)?;
+                        writeln!(f, "{} := {} + {};", target, left, right)?;
                     }
                     Inst::Sub { target, left, right } => {
                         fmt_indent(f, indent)?;
-                        writeln!(f, "x{} := x{} - x{};", target, left, right)?;
+                        writeln!(f, "{} := {} - {};", target, left, right)?;
                     }
                     Inst::Set { target, value } => {
                         fmt_indent(f, indent)?;
-                        writeln!(f, "x{} := {};", target, value)?;
+                        writeln!(f, "{} := {};", target, value)?;
                     }
                     Inst::Block { inner } => {
                         fmt_indent(f, indent)?;
@@ -245,21 +245,21 @@ impl fmt::Display for Prog {
                     }
                     Inst::While { cond, inner } => {
                         fmt_indent(f, indent)?;
-                        writeln!(f, "while x{} /= 0 do", cond)?;
+                        writeln!(f, "while {} /= 0 do", cond)?;
                         fmt_recurse(f, inner, indent + 1)?;
                         fmt_indent(f, indent)?;
                         writeln!(f, "od")?;
                     }
                     Inst::For { num, inner } => {
                         fmt_indent(f, indent)?;
-                        writeln!(f, "for x{} do", num)?;
+                        writeln!(f, "for {} do", num)?;
                         fmt_recurse(f, inner, indent + 1)?;
                         fmt_indent(f, indent)?;
                         writeln!(f, "od")?;
                     }
                     Inst::Call { target, function, input } => {
                         fmt_indent(f, indent)?;
-                        writeln!(f, "x{} := {}({});", target, function, input)?;
+                        writeln!(f, "{} := {}({});", target, function, input)?;
                     },
                 }
             }

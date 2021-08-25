@@ -3,7 +3,7 @@ use std::{convert::{TryFrom, TryInto}, fmt};
 use num_bigint::BigUint;
 use num_traits::Zero;
 
-use crate::{Prog, pair};
+use crate::{Inst, Prog, pair};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum IndexV2 {
@@ -61,7 +61,9 @@ impl ValueV2 {
         match self {
             ValueV2::Int(num) => num.is_zero(),
             ValueV2::Tuple(left, right) => left.is_zero() && right.is_zero(),
-            ValueV2::Prog(_) => todo!(),
+            ValueV2::Prog(prog) => {
+                matches!(prog.inst.as_slice(), &[Inst::Add { .. }]) && BigUint::try_from(prog.clone()) == Ok(0_u8.into())
+            },
         }
     }
 }
