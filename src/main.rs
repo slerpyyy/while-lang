@@ -51,7 +51,12 @@ fn main() {
 
             let mut ev = Evaluator::new(prog);
             ev.run();
-            println!("{:#?}", ev.state)
+
+            println!("{{");
+            for (key, value) in ev.state.into_iter() {
+                println!("    {} => {}", key, value);
+            }
+            println!("}}");
         }
     }
 }

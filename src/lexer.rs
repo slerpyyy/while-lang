@@ -1,11 +1,12 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 
 use crate::*;
-use std::{iter::Peekable, ops::{Add, Mul, Range}, panic};
+
+use std::{iter::Peekable, ops::{Add, Mul, Range}};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenKind {
-    Var(Value),
+    Var(IndexV2),
     Const(Value),
     Eq,
     Neq,
@@ -41,7 +42,7 @@ impl Token {
     }
 
     #[must_use]
-    pub const fn var(&self) -> Option<&Value> {
+    pub const fn var(&self) -> Option<&IndexV2> {
         match self.kind {
             TokenKind::Var(ref k) => Some(k),
             _ => None,
@@ -69,9 +70,46 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
     let mut iter = code.chars().peekable();
     let mut pos = 0;
 
+    fn check_inc(actual: Option<char>, expected: char, position: &mut usize) -> bool {
+        let check = actual == Some(expected);
+        if check {
+            *position += expected.len_utf8();
+        }
+        check
+    }
+
+    fn unexpected_symbol(file_id: usize, span: Range<usize>, help: Option<impl Into<String>>) -> Diagnostic<usize> {
+        let base = Diagnostic::error()
+            .with_message("Unexpected symbol")
+            .with_labels(vec![Label::primary(file_id, span)]);
+
+        match help {
+            Some(msg) => base.with_notes(vec![msg.into()]),
+            None => base,
+        }
+    }
+
     while let Some(&c) = iter.peek() {
         let start = pos;
         let kind = match c {
+            '#' => {
+                while let Some(ch) = iter.next() {
+                    pos += ch.len_utf8();
+                    if ch == '\n' {
+                        break;
+                    }
+                }
+                continue;
+            }
+            '{' => {
+                while let Some(ch) = iter.next() {
+                    pos += ch.len_utf8();
+                    if ch == '}' {
+                        break;
+                    }
+                }
+                continue;
+            }
             '0'..='9' => {
                 let num = parse_number(&mut iter, &mut pos);
                 TokenKind::Const(num)
@@ -80,7 +118,7 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
                 pos += c.len_utf8();
                 iter.next();
                 let num = parse_number(&mut iter, &mut pos);
-                TokenKind::Var(num)
+                TokenKind::Var(IndexV2::Int(num))
             }
             ':' => {
                 pos += c.len_utf8();
@@ -89,7 +127,7 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
                     pos += '='.len_utf8();
                     TokenKind::Eq
                 } else {
-                    panic!()
+                    Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `:=`?")))?
                 }
             }
             '/' => {
@@ -99,8 +137,12 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
                     pos += '='.len_utf8();
                     TokenKind::Neq
                 } else {
-                    panic!()
+                    Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `/=`?")))?
                 }
+            }
+            '=' => {
+                pos += c.len_utf8();
+                Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `:=` or `/=`?")))?
             }
             ';' => {
                 pos += c.len_utf8();
@@ -138,48 +180,47 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
                 TokenKind::RightParen
             }
             'w' => {
+                pos += c.len_utf8();
                 iter.next();
-                if iter.next() == Some('h')
-                && iter.next() == Some('i')
-                && iter.next() == Some('l')
-                && iter.next() == Some('e')
+                if check_inc(iter.next(), 'h', &mut pos)
+                && check_inc(iter.next(), 'i', &mut pos)
+                && check_inc(iter.next(), 'l', &mut pos)
+                && check_inc(iter.next(), 'e', &mut pos)
                 {
-                    pos += "while".len();
                     TokenKind::While
                 } else {
-                    panic!()
+                    Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `while`?")))?
                 }
             }
             'f' => {
+                pos += c.len_utf8();
                 iter.next();
-                match iter.next() {
-                    Some('o') if iter.next() == Some('r') => {
-                        pos += "for".len();
-                        TokenKind::For
-                    }
-                    Some('n') => {
-                        pos += "fn".len();
-                        TokenKind::Fn
-                    }
-                    _ => panic!()
+                let second = iter.next();
+                if check_inc(second, 'n', &mut pos) {
+                    TokenKind::Fn
+                } else if check_inc(second, 'o', &mut pos)
+                && check_inc(iter.next(), 'r', &mut pos) {
+                    TokenKind::For
+                } else {
+                    Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `for` or `fn`?")))?
                 }
             }
             'd' => {
+                pos += c.len_utf8();
                 iter.next();
-                if iter.next() == Some('o') {
-                    pos += "do".len();
+                if check_inc(iter.next(), 'o', &mut pos) {
                     TokenKind::Do
                 } else {
-                    panic!()
+                    Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `do`?")))?
                 }
             }
             'o' => {
+                pos += c.len_utf8();
                 iter.next();
-                if iter.next() == Some('d') {
-                    pos += "od".len();
+                if check_inc(iter.next(), 'd', &mut pos) {
                     TokenKind::Od
                 } else {
-                    panic!()
+                    Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `od`?")))?
                 }
             }
             ' ' | '\t' | '\n' | '\r' => {
@@ -187,13 +228,30 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
                 iter.next();
                 continue;
             }
+            'A'..='Z' | '_' => {
+                let mut ident = String::new();
+                while let Some(&ch) = iter.peek() {
+                    if !ch.is_ascii_alphanumeric() && ch != '_' {
+                        break;
+                    }
+
+                    ident.push(ch);
+                    pos += ch.len_utf8();
+                    iter.next();
+                }
+                TokenKind::Var(IndexV2::Name(ident))
+            }
             _ => {
                 pos += c.len_utf8();
-                return Err(
-                    Diagnostic::error()
-                        .with_message("Unexpected symbol")
-                        .with_labels(vec![Label::primary(file_id, start..pos)])
-                )
+                let help = if c.is_ascii_alphabetic() {
+                    Some("help: Identifiers must start with an uppercase character or underscore")
+                } else if !c.is_ascii() {
+                    Some("help: This interpreter does not support unicode")
+                } else {
+                    None
+                };
+
+                Err(unexpected_symbol(file_id, start..pos, help))?
             },
         };
 

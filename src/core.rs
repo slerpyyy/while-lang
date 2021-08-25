@@ -4,39 +4,83 @@ use num_bigint::BigUint;
 use num_integer::Roots;
 use num_traits::{NumOps, Zero};
 
-pub type Index = BigUint;
 pub type Value = BigUint;
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub enum IndexV2 {
+    Int(BigUint),
+    Name(String),
+}
+
+impl fmt::Display for IndexV2 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IndexV2::Int(num) => write!(f, "x{}", num),
+            IndexV2::Name(name) => write!(f, "{}", name),
+        }
+    }
+}
+
+
+impl TryFrom<IndexV2> for BigUint {
+    type Error = ();
+
+    fn try_from(value: IndexV2) -> Result<Self, Self::Error> {
+        match value {
+            IndexV2::Int(num) => Ok(num),
+            IndexV2::Name(_) => Err(()),
+        }
+    }
+}
+
+impl From<BigUint> for IndexV2 {
+    fn from(value: BigUint) -> Self {
+        IndexV2::Int(value)
+    }
+}
+
+impl From<u8> for IndexV2 {
+    fn from(value: u8) -> Self {
+        IndexV2::Int(value.into())
+    }
+}
+
+impl From<String> for IndexV2 {
+    fn from(value: String) -> Self {
+        IndexV2::Name(value)
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Inst {
     Add {
-        target: Index,
-        left: Index,
-        right: Index,
+        target: IndexV2,
+        left: IndexV2,
+        right: IndexV2,
     },
     Sub {
-        target: Index,
-        left: Index,
-        right: Index,
+        target: IndexV2,
+        left: IndexV2,
+        right: IndexV2,
     },
     Set {
-        target: Index,
+        target: IndexV2,
         value: Value,
     },
     Call {
-        target: Index,
-        function: Index,
-        input: Index,
+        target: IndexV2,
+        function: IndexV2,
+        input: IndexV2,
     },
     Block {
         inner: Vec<Inst>,
     },
     While {
-        cond: Index,
+        cond: IndexV2,
         inner: Vec<Inst>,
     },
     For {
-        num: Index,
+        num: IndexV2,
         inner: Vec<Inst>,
     },
 }
@@ -48,53 +92,61 @@ pub struct Prog {
 
 impl Prog {
     #[must_use]
-    pub fn highest_index(&self) -> Index {
-        fn recurse(inst_vec: &[Inst]) -> Index {
-            let mut highest = Index::zero();
+    pub fn highest_index(&self) -> BigUint {
+        fn check(value: &IndexV2, curr: &mut BigUint) {
+            if let IndexV2::Int(num) = value {
+                if num > curr {
+                    *curr = num.clone();
+                }
+            }
+        }
+
+        fn recurse(inst_vec: &[Inst], highest: &mut BigUint) {
             for inst in inst_vec {
                 match inst {
                     Inst::Set { target, .. } => {
-                        highest = highest.max(target.clone());
+                        check(target, highest);
                     }
                     Inst::Add {target, left, right} |
                     Inst::Sub {target, left, right}  => {
-                        highest = highest.max(target.clone());
-                        highest = highest.max(left.clone());
-                        highest = highest.max(right.clone());
+                        check(target, highest);
+                        check(left, highest);
+                        check(right, highest);
                     }
                     Inst::Block { inner } => {
-                        highest = highest.max(recurse(inner));
+                        recurse(inner, highest);
                     }
                     Inst::While {cond, inner} => {
-                        highest = highest.max(cond.clone());
-                        highest = highest.max(recurse(inner));
+                        check(cond, highest);
+                        recurse(inner, highest);
                     }
                     Inst::For {num, inner} => {
-                        highest = highest.max(num.clone());
-                        highest = highest.max(recurse(inner));
+                        check(num, highest);
+                        recurse(inner, highest);
                     }
                     Inst::Call {target, function, input} => {
-                        highest = highest.max(target.clone());
-                        highest = highest.max(function.clone());
-                        highest = highest.max(input.clone());
+                        check(target, highest);
+                        check(function, highest);
+                        check(input, highest);
                     }
                 }
             }
-            highest
         }
 
-        recurse(&self.inst)
+        let mut highest = BigUint::zero();
+        recurse(&self.inst, &mut highest);
+        highest
     }
 
     #[must_use]
     pub fn reindex_vars(mut self) -> Self {
         fn reindex_single(
-            var: &mut Index,
-            map: &mut HashMap::<Index, Index>,
-            next_available: &mut Index
+            var: &mut IndexV2,
+            map: &mut HashMap::<IndexV2, IndexV2>,
+            next_available: &mut BigUint
         ) {
             *var = map.get(var).cloned().unwrap_or_else(|| {
-                let new_var = next_available.clone();
+                let new_var = IndexV2::Int(next_available.clone());
                 map.insert(var.clone(), new_var.clone());
                 *next_available += 1_u8;
                 new_var
@@ -103,8 +155,8 @@ impl Prog {
 
         fn recurse(
             inst_vec: &mut Vec<Inst>,
-            map: &mut HashMap::<Index, Index>,
-            next_available: &mut Index
+            map: &mut HashMap::<IndexV2, IndexV2>,
+            next_available: &mut BigUint
         ) {
             for inst in inst_vec {
                 match inst {
@@ -137,8 +189,9 @@ impl Prog {
             }
         }
 
-        let mut map = HashMap::<Index, Index>::new();
-        let mut next_available = Index::zero();
+        let mut next_available = BigUint::zero();
+        let mut map = HashMap::new();
+        map.insert(IndexV2::Int(BigUint::zero()), IndexV2::Int(BigUint::zero()));
         recurse(&mut self.inst, &mut map, &mut next_available);
         self
     }
@@ -164,21 +217,21 @@ impl Prog {
 
     #[must_use]
     pub fn translate_while(mut self) -> Self {
-        fn recurse(inst_vec: &mut Vec<Inst>, reserved: &Index, next_available: &mut Index) {
+        fn recurse(inst_vec: &mut Vec<Inst>, reserved: &BigUint, next_available: &mut BigUint) {
             for inst in inst_vec {
                 match inst {
                     Inst::For {num, inner} => {
                         recurse(inner, reserved, next_available);
 
                         inner.extend(vec![
-                            Inst::Set {target: reserved.clone(), value: 1_u8.into()},
-                            Inst::Sub {target: next_available.clone(), left: next_available.clone(), right: reserved.clone()},
+                            Inst::Set {target: IndexV2::Int(reserved.clone()), value: 1_u8.into()},
+                            Inst::Sub {target: IndexV2::Int(next_available.clone()), left: IndexV2::Int(next_available.clone()), right: IndexV2::Int(reserved.clone())},
                         ]);
 
                         *inst = Inst::Block {inner: vec![
-                            Inst::Set {target: reserved.clone(), value: 0_u8.into()},
-                            Inst::Add {target: next_available.clone(), left: num.clone(), right: reserved.clone()},
-                            Inst::While {cond: next_available.clone(), inner: inner.clone()}
+                            Inst::Set {target: IndexV2::Int(reserved.clone()), value: 0_u8.into()},
+                            Inst::Add {target: IndexV2::Int(next_available.clone()), left: num.clone(), right: IndexV2::Int(reserved.clone())},
+                            Inst::While {cond: IndexV2::Int(next_available.clone()), inner: inner.clone()}
                         ]};
 
                         *next_available += 1_u8;
@@ -294,19 +347,19 @@ impl TryFrom<BigUint> for Prog {
                 0..=2 => {
                     let (i, c) = pair_inv(num);
                     if kind == 2 {
-                        Inst::Set { target: i, value: c }
+                        Inst::Set { target: i.into(), value: c }
                     } else {
                         let (j, k) = pair_inv(c);
                         if kind == 0 {
-                            Inst::Add { target: i, left: j, right: k }
+                            Inst::Add { target: i.into(), left: j.into(), right: k.into() }
                         } else {
-                            Inst::Sub { target: i, left: j, right: k }
+                            Inst::Sub { target: i.into(), left: j.into(), right: k.into() }
                         }
                     }
                 },
                 3 => {
                     let (i, p) = pair_inv(num);
-                    Inst::While { cond: i, inner: vec![recurse(p)?] }
+                    Inst::While { cond: i.into(), inner: vec![recurse(p)?] }
                 },
                 4 => {
                     let (p1, p2) = pair_inv(num);
@@ -330,21 +383,21 @@ impl TryFrom<Prog> for BigUint {
             let (head, tail) = inst_vec.split_first().ok_or(())?;
             let head = match head {
                 Inst::Add { target, left, right } => {
-                    let num: BigUint = pair(left.clone(), right.clone());
-                    let num: BigUint = pair(target.clone(), num);
+                    let num: BigUint = pair(left.clone().try_into()?, right.clone().try_into()?);
+                    let num: BigUint = pair(target.clone().try_into()?, num);
                     BigUint::from(5_u8) * num
                 }
                 Inst::Sub { target, left, right } => {
-                    let num: BigUint = pair(left.clone(), right.clone());
-                    let num: BigUint = pair(target.clone(), num);
+                    let num: BigUint = pair(left.clone().try_into()?, right.clone().try_into()?);
+                    let num: BigUint = pair(target.clone().try_into()?, num);
                     BigUint::from(5_u8) * num + BigUint::from(1_u8)
                 }
                 Inst::Set { target, value } => {
-                    let num: BigUint = pair(target.clone(), value.clone());
+                    let num: BigUint = pair(target.clone().try_into()?, value.clone());
                     BigUint::from(5_u8) * num + BigUint::from(2_u8)
                 }
                 Inst::While { cond, inner } => {
-                    let num: BigUint = pair(cond.clone(), recurse(inner)?);
+                    let num: BigUint = pair(cond.clone().try_into()?, recurse(inner)?);
                     BigUint::from(5_u8) * num + BigUint::from(3_u8)
                 }
                 Inst::Block { inner } => {
@@ -392,16 +445,16 @@ mod test {
     #[test]
     fn to_string_simple() {
         let prog = Prog { inst: vec![
-            Inst::Set { target: 0_u8.into(), value: 8_u8.into() },
+            Inst::Set { target: 0.into(), value: 8_u8.into() },
             Inst::Block { inner: vec![
-                Inst::Set { target: 1_u8.into(), value: 16_u8.into() },
-                Inst::Set { target: 2_u8.into(), value: 32_u8.into() },
+                Inst::Set { target: 1.into(), value: 16_u8.into() },
+                Inst::Set { target: 2.into(), value: 32_u8.into() },
             ] },
-            Inst::While { cond: 2_u8.into(), inner: vec![
-                Inst::Add { target: 3_u8.into(), left: 1_u8.into(), right: 3_u8.into() },
-                Inst::Sub { target: 2_u8.into(), left: 2_u8.into(), right: 0_u8.into() },
-                Inst::For { num: 0_u8.into(), inner: vec![
-                    Inst::Set { target: 3_u8.into(), value: 1_u8.into() }
+            Inst::While { cond: 2.into(), inner: vec![
+                Inst::Add { target: 3.into(), left: 1.into(), right: 3.into() },
+                Inst::Sub { target: 2.into(), left: 2.into(), right: 0.into() },
+                Inst::For { num: 0.into(), inner: vec![
+                    Inst::Set { target: 3.into(), value: 1_u8.into() }
                 ] },
             ] },
         ] };

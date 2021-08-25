@@ -5,7 +5,7 @@ use num_traits::Zero;
 
 pub struct Evaluator {
     pub work: Vec<Inst>,
-    pub state: HashMap<Index, Value>,
+    pub state: HashMap<IndexV2, Value>,
 }
 
 impl Evaluator {
@@ -59,10 +59,11 @@ impl Evaluator {
 
                 let sub_routine: Prog = function.try_into().unwrap();
                 let mut eval = Evaluator::new(sub_routine);
-                eval.state.insert(0_u8.into(), input);
+                let x0 = IndexV2::Int(0_u8.into());
+                eval.state.insert(x0.clone(), input);
 
                 eval.run();
-                let output = eval.state[&0_u8.into()].clone();
+                let output = eval.state.remove(&x0).unwrap();
                 self.state.insert(target, output);
             },
         }
