@@ -4,52 +4,7 @@ use num_bigint::BigUint;
 use num_integer::Roots;
 use num_traits::{NumOps, Zero};
 
-pub type Value = BigUint;
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub enum IndexV2 {
-    Int(BigUint),
-    Name(String),
-}
-
-impl fmt::Display for IndexV2 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            IndexV2::Int(num) => write!(f, "x{}", num),
-            IndexV2::Name(name) => write!(f, "{}", name),
-        }
-    }
-}
-
-
-impl TryFrom<IndexV2> for BigUint {
-    type Error = ();
-
-    fn try_from(value: IndexV2) -> Result<Self, Self::Error> {
-        match value {
-            IndexV2::Int(num) => Ok(num),
-            IndexV2::Name(_) => Err(()),
-        }
-    }
-}
-
-impl From<BigUint> for IndexV2 {
-    fn from(value: BigUint) -> Self {
-        IndexV2::Int(value)
-    }
-}
-
-impl From<u8> for IndexV2 {
-    fn from(value: u8) -> Self {
-        IndexV2::Int(value.into())
-    }
-}
-
-impl From<String> for IndexV2 {
-    fn from(value: String) -> Self {
-        IndexV2::Name(value)
-    }
-}
+use crate::{IndexV2, ValueV2};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Inst {
@@ -65,7 +20,7 @@ pub enum Inst {
     },
     Set {
         target: IndexV2,
-        value: Value,
+        value: ValueV2,
     },
     Call {
         target: IndexV2,
@@ -347,7 +302,7 @@ impl TryFrom<BigUint> for Prog {
                 0..=2 => {
                     let (i, c) = pair_inv(num);
                     if kind == 2 {
-                        Inst::Set { target: i.into(), value: c }
+                        Inst::Set { target: i.into(), value: c.into() }
                     } else {
                         let (j, k) = pair_inv(c);
                         if kind == 0 {
@@ -393,7 +348,7 @@ impl TryFrom<Prog> for BigUint {
                     BigUint::from(5_u8) * num + BigUint::from(1_u8)
                 }
                 Inst::Set { target, value } => {
-                    let num: BigUint = pair(target.clone().try_into()?, value.clone());
+                    let num: BigUint = pair(target.clone().try_into()?, value.clone().try_into()?);
                     BigUint::from(5_u8) * num + BigUint::from(2_u8)
                 }
                 Inst::While { cond, inner } => {

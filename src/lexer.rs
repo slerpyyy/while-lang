@@ -7,10 +7,11 @@ use std::{iter::Peekable, ops::{Add, Mul, Range}};
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenKind {
     Var(IndexV2),
-    Const(Value),
+    Const(ValueV2),
     Eq,
     Neq,
     Semicolon,
+    Comma,
     Plus,
     Minus,
     LeftBracket,
@@ -112,7 +113,7 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
             }
             '0'..='9' => {
                 let num = parse_number(&mut iter, &mut pos);
-                TokenKind::Const(num)
+                TokenKind::Const(ValueV2::Int(num))
             }
             'x' => {
                 pos += c.len_utf8();
@@ -148,6 +149,11 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
                 pos += c.len_utf8();
                 iter.next();
                 TokenKind::Semicolon
+            }
+            ',' => {
+                pos += c.len_utf8();
+                iter.next();
+                TokenKind::Comma
             }
             '+' => {
                 pos += c.len_utf8();
@@ -282,7 +288,7 @@ mod test {
 
     #[test]
     fn simple_program_token_kind() {
-        let code = "[[x0 := 32; [x1:=25;x2:=x0+x1]]; while x2 /= 0 do x2 := x2 - x1 od]";
+        let code = "[[x0 :=#\n32;{aaa}[x1:=25;x2:=x0+x1]];#bbb\nwhile{}x2 /= 0 do x2 := x2 - x1 od]";
         let tokens = lex(code, 0).unwrap().into_iter().map(|t| t.kind).collect::<Vec<_>>();
         let expected = vec![
             TokenKind::LeftBracket,

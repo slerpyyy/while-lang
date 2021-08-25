@@ -2,7 +2,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 
 use crate::*;
 
-use std::{convert::TryInto, iter::Peekable, ops::Range};
+use std::{iter::Peekable, ops::Range};
 
 fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_id: usize) -> Result<Vec<Inst>, Diagnostic<usize>> {
     let mut out = Vec::new();
@@ -39,7 +39,7 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
 
                 let (left, left_span) = match diag_unwarp(tokens.next(), file_id, var.span.start..eq_token.span.end)? {
                     Token { kind: TokenKind::Const(value), .. } => {
-                        out.push(Inst::Set { target, value });
+                        out.push(Inst::Set { target, value: value.into() });
                         continue;
                     },
                     Token { kind: TokenKind::Var(var), span } => (var, span),
@@ -234,7 +234,7 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
                 }
 
                 let sub = Prog { inst };
-                let value = sub.try_into().unwrap();
+                let value = ValueV2::Prog(sub);
                 out.push(Inst::Set { target, value })
             }
 

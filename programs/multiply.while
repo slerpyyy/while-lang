@@ -6,6 +6,6 @@ B := 4  { second input }
 x0 := 0
 One := 1
 while A /= 0 do
-    x0 := x0; + B
+    x0 := x0 + B
     A := A - One
 od

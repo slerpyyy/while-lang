@@ -1,11 +1,13 @@
-use std::{collections::HashMap, convert::TryInto};
+use std::{collections::HashMap, convert::{TryFrom, TryInto}};
+
+use num_bigint::BigUint;
+use num_traits::Zero;
 
 use crate::*;
-use num_traits::Zero;
 
 pub struct Evaluator {
     pub work: Vec<Inst>,
-    pub state: HashMap<IndexV2, Value>,
+    pub state: HashMap<IndexV2, ValueV2>,
 }
 
 impl Evaluator {
@@ -24,14 +26,14 @@ impl Evaluator {
 
         match inst {
             Inst::Add { target, left, right } => {
-                let left = self.state.get(&left).cloned().unwrap_or_default();
-                let right = self.state.get(&right).cloned().unwrap_or_default();
-                self.state.insert(target, left + right);
+                let left: BigUint = self.state.get(&left).cloned().unwrap_or_default().try_into().unwrap();
+                let right: BigUint = self.state.get(&right).cloned().unwrap_or_default().try_into().unwrap();
+                self.state.insert(target, ValueV2::Int(left + right));
             }
             Inst::Sub { target, left, right } => {
-                let left = self.state.get(&left).cloned().unwrap_or_default();
-                let right = self.state.get(&right).cloned().unwrap_or_default();
-                self.state.insert(target, left - right);
+                let left: BigUint = self.state.get(&left).cloned().unwrap_or_default().try_into().unwrap();
+                let right: BigUint = self.state.get(&right).cloned().unwrap_or_default().try_into().unwrap();
+                self.state.insert(target, ValueV2::Int(left - right));
             }
             Inst::Set { target, value } => {
                 self.state.insert(target, value);
@@ -46,7 +48,8 @@ impl Evaluator {
                 }
             }
             Inst::For { num, inner } => {
-                if let Some(mut num) = self.state.get(&num).cloned() {
+                if let Some(num) = self.state.get(&num).cloned() {
+                    let mut num = BigUint::try_from(num).unwrap();
                     while !num.is_zero() {
                         self.work.extend(inner.clone().into_iter().rev());
                         num -= 1_u8;
