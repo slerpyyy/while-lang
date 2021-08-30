@@ -1,4 +1,4 @@
-use std::{convert::{TryFrom, TryInto}, unreachable};
+use std::{collections::HashSet, convert::{TryFrom, TryInto}, unreachable};
 use std::{fmt, collections::HashMap};
 use num_bigint::BigUint;
 use num_integer::Roots;
@@ -170,7 +170,58 @@ impl Prog {
         self
     }
 
+    #[must_use]
     pub fn inline_functions(mut self) -> Self {
+        fn translate(inst_vec: &mut Vec<Inst>, lut: &mut HashMap<IndexV2, IndexV2>, next: &mut BigUint, scan_only: bool) {
+            for inst in inst_vec.iter_mut() {
+                if !scan_only {
+                    match inst {
+                        Inst::Add { left, right, .. } |
+                        Inst::Sub { left, right, .. } => {
+                            lut.get(left).into_iter().for_each(|x| *left = x.clone());
+                            lut.get(right).into_iter().for_each(|x| *right = x.clone());
+                        },
+                        Inst::Call { function, input, .. } => {
+                            lut.get(function).into_iter().for_each(|x| *function = x.clone());
+                            lut.get(input).into_iter().for_each(|x| *input = x.clone());
+                        },
+                        Inst::Block { inner } => {
+                            translate(inner, lut, next, scan_only);
+                        },
+                        Inst::While { cond, inner } => {
+                            lut.get(cond).into_iter().for_each(|x| *cond = x.clone());
+                            translate(inner, lut, next, true);
+                            translate(inner, lut, next, scan_only);
+                        },
+                        Inst::For { num, inner } => {
+                            lut.get(num).into_iter().for_each(|x| *num = x.clone());
+                            translate(inner, lut, next, true);
+                            translate(inner, lut, next, scan_only);
+                        },
+                        _ => (),
+                    }
+                }
+
+                match inst {
+                    Inst::Add { target, .. } |
+                    Inst::Sub { target, .. } |
+                    Inst::Set { target, .. } |
+                    Inst::Call { target, .. } => {
+                        if !lut.contains_key(target) {
+                            *next += 1_u8;
+                            let new_target = IndexV2::Int(next.clone());
+                            lut.insert(target.clone(), new_target);
+                        }
+
+                        if !scan_only {
+                            lut.get(target).into_iter().for_each(|x| *target = x.clone());
+                        }
+                    },
+                    _ => (),
+                }
+            }
+        }
+
         fn recurse(inst_vec: &mut Vec<Inst>, funs: &mut HashMap<IndexV2, ValueV2>, next: &mut BigUint) {
             for inst in inst_vec.iter_mut() {
                 match inst {
@@ -184,42 +235,45 @@ impl Prog {
                     },
 
                     Inst::Call { target, function, input } => {
-                        let x0 = IndexV2::Int(0_u8.into());
-                        *next += 1_u8;
-                        let temp = IndexV2::Int(next.clone());
+                        funs.remove(target);
 
                         let mut expand = Vec::new();
-
-                        if !target.is_zero() {
-                            expand.push(Inst::Set { target: temp.clone(), value: 0_u8.into() });
-                            expand.push(Inst::Add { target: temp.clone(), left: x0.clone(), right: temp.clone() });
-                        }
-
-                        if !input.is_zero() {
-                            expand.push(Inst::Set { target: x0.clone(), value: 0_u8.into() });
-                            expand.push(Inst::Add { target: x0.clone(), left: input.clone(), right: x0.clone() });
+                        if input != target {
+                            expand.push(Inst::Set { target: target.clone(), value: 0_u8.into() });
+                            expand.push(Inst::Add { target: target.clone(), left: input.clone(), right: target.clone() });
                         }
 
                         let fun_def: Prog = funs.get(function).unwrap().clone().try_into().unwrap();
-                        expand.push(Inst::Block { inner: fun_def.inst });
+                        let mut fun_inst_vec = fun_def.inst;
 
-                        if !target.is_zero() {
-                            expand.push(Inst::Set { target: target.clone(), value: 0_u8.into() });
-                            expand.push(Inst::Add { target: target.clone(), left: x0.clone(), right: target.clone() });
+                        let mut lut = HashMap::new();
+                        lut.insert(0_u8.into(), target.clone());
 
-                            expand.push(Inst::Set { target: x0.clone(), value: 0_u8.into() });
-                            expand.push(Inst::Add { target: x0.clone(), left: temp, right: x0.clone() });
-                        }
+                        translate(&mut fun_inst_vec, &mut lut, next, false);
+                        expand.push(Inst::Block { inner: fun_inst_vec });
 
                         recurse(&mut expand, funs, next);
 
                         *inst = Inst::Block { inner: expand };
                     }
 
-                    // TODO: make this loop safe
                     Inst::Block { inner } |
                     Inst::While { inner, .. } |
-                    Inst::For { inner, .. } => recurse(inner, funs, next),
+                    Inst::For { inner, .. } => {
+                        for inner_inst in inner.iter() {
+                            match inner_inst {
+                                Inst::Add { target, .. } |
+                                Inst::Sub { target, .. } |
+                                Inst::Set { target, .. } |
+                                Inst::Call { target, .. } => {
+                                    funs.remove(target);
+                                },
+                                _ => (),
+                            }
+                        }
+
+                        recurse(inner, funs, next);
+                    },
                 }
             }
         }
@@ -227,6 +281,49 @@ impl Prog {
         let mut next_available = self.highest_index();
         let mut funs: HashMap<IndexV2, ValueV2> = HashMap::<IndexV2, ValueV2>::new();
         recurse(&mut self.inst, &mut funs, &mut next_available);
+        self
+    }
+
+    #[must_use]
+    pub fn unused_sets(mut self) -> Self {
+        fn recurse(inst_vec: &mut Vec<Inst>, alive: &mut HashSet<IndexV2>, scan_only: bool) {
+            for inst in inst_vec.iter_mut().rev() {
+                match inst {
+                    Inst::Add { target, left, right } |
+                    Inst::Sub { target, left, right } => {
+                        alive.remove(target);
+                        alive.insert(left.clone());
+                        alive.insert(right.clone());
+                    },
+                    Inst::Call { target, function, input } => {
+                        alive.remove(target);
+                        alive.insert(function.clone());
+                        alive.insert(input.clone());
+                    },
+                    Inst::Block { inner } => recurse(inner, alive, scan_only),
+                    Inst::While { cond, inner } => {
+                        recurse(inner, alive, true);
+                        recurse(inner, alive, scan_only);
+                        alive.insert(cond.clone());
+                    },
+                    Inst::For { num, inner } => {
+                        recurse(inner, alive, true);
+                        recurse(inner, alive, scan_only);
+                        alive.insert(num.clone());
+                    },
+                    Inst::Set { target, .. } => {
+                        if !alive.contains(target) {
+                            *inst = Inst::Block { inner: vec![] };
+                        } else {
+                            alive.remove(target);
+                        }
+                    },
+                };
+            }
+        }
+
+        let mut alive = HashSet::new();
+        recurse(&mut self.inst, &mut alive, false);
         self
     }
 

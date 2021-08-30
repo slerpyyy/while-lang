@@ -4,5 +4,10 @@ fn Double do
     x0 := x0 + x0
 od
 
-x2 := 3
-x2 := Double(x2)
+fn Twice do
+    x0 := Double(x0)
+    x0 := Double(x0)
+od
+
+x1 := 3
+x2 := Twice(x1)

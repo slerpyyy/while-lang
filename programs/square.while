@@ -1,0 +1,26 @@
+# the nth odd number
+fn NthOdd do
+    One := 1;
+    x0 := x0 + x0;   { 2N }
+    x0 := x0 + One;  { 2N+1 }
+od
+
+# the nth square number
+fn Square do
+    Iter := 0;
+    Iter := Iter + x0;
+
+    x0 := 0;
+    Index := 0;
+
+    for Iter do
+        Odd := NthOdd(Index);
+        x0 := x0 + Odd;
+
+        One := 1;
+        Index := Index + One;
+    od
+od
+
+x0 := 7;
+x0 := Square(x0);

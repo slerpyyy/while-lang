@@ -73,7 +73,12 @@ fn main() {
                 }
             };
 
-            let prog = prog.inline_functions().inline_blocks().translate_while();
+            let prog = prog
+                .inline_functions()
+                .translate_while()
+                .unused_sets()
+                .inline_blocks();
+
             println!("{}", prog);
         },
     }

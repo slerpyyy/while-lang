@@ -62,6 +62,7 @@ impl Evaluator {
 
                 let sub_routine: Prog = function.try_into().unwrap();
                 let mut eval = Evaluator::new(sub_routine);
+                eval.state = self.state.clone();
                 let x0 = IndexV2::Int(0_u8.into());
                 eval.state.insert(x0.clone(), input);
 
