@@ -19,6 +19,8 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
     }
 
     while let Some(token) = tokens.peek() {
+        out.push(Inst::CodePoint(token.span.start));
+
         match token.kind.clone() {
             TokenKind::Var(target) => {
                 let var = tokens.next().unwrap();

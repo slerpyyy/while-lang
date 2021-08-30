@@ -18,6 +18,9 @@ enum SubCommand {
     Run {
         input_file: String
     },
+    Debug {
+        input_file: String
+    },
     Rewrite {
         input_file: String
     },
@@ -55,6 +58,32 @@ fn main() {
             let mut ev = Evaluator::new(prog);
             ev.run();
 
+            println!("{{");
+            for (key, value) in ev.state.into_iter() {
+                println!("    {} => {}", key, value);
+            }
+            println!("}}");
+        }
+        SubCommand::Debug { input_file } => {
+            let code = std::fs::read_to_string(&input_file).unwrap();
+            let file_id = files.add(&input_file, &code);
+
+            let prog = match compile(&code, file_id) {
+                Ok(s) => s,
+                Err(error) => {
+                    term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
+                    return;
+                }
+            };
+
+            let mut ev = Evaluator::new(prog);
+            while ev.step() {
+                let _ = std::process::Command::new("cmd.exe").arg("/c").arg("cls").status();
+                ev.debug_print(&code, 7);
+                let _ = std::process::Command::new("cmd.exe").arg("/c").arg("pause").status();
+            }
+
+            let _ = std::process::Command::new("cmd.exe").arg("/c").arg("cls").status();
             println!("{{");
             for (key, value) in ev.state.into_iter() {
                 println!("    {} => {}", key, value);

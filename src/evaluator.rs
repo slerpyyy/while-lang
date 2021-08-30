@@ -8,20 +8,24 @@ use crate::*;
 pub struct Evaluator {
     pub work: Vec<Inst>,
     pub state: HashMap<IndexV2, ValueV2>,
+    pub position: usize,
 }
 
 impl Evaluator {
     #[must_use]
     pub fn new(prog: Prog) -> Self {
-        let mut work = prog.inst;
+        let mut work = prog.inline_functions().inst;
         work.reverse();
-        Self { state: HashMap::new(), work }
+        Self { state: HashMap::new(), work, position: 0 }
     }
 
     pub fn step(&mut self) -> bool {
-        let inst = match self.work.pop() {
-            Some(inst) => inst,
-            None => return false,
+        let inst = loop {
+            match self.work.pop() {
+                Some(Inst::CodePoint(k)) => self.position = k,
+                Some(inst) => break inst,
+                None => return false,
+            }
         };
 
         match inst {
@@ -70,6 +74,7 @@ impl Evaluator {
                 let output = eval.state.remove(&x0).unwrap();
                 self.state.insert(target, output);
             },
+            Inst::CodePoint(_) => unreachable!(),
         }
 
         true
@@ -77,6 +82,27 @@ impl Evaluator {
 
     pub fn run(&mut self) {
         while self.step() {}
+    }
+
+    pub fn debug_print(&self, code: &str, context: usize) {
+        let curr_ln = code[..self.position].lines().count();
+        let first_ln = curr_ln.saturating_sub(context / 2);
+
+        println!("\nCode Point:");
+        for (k , line) in code.lines().enumerate().skip(first_ln).take(context) {
+            let sep = match k == curr_ln {
+                true => '>',
+                false => '|',
+            };
+
+            println!("{:8} {} {}", k, sep, line);
+        }
+
+        println!("\nState:\n{{");
+        for (key, value) in self.state.iter() {
+            println!("    {} => {}", key, value);
+        }
+        println!("}}\n");
     }
 }
 

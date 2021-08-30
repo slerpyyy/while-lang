@@ -38,6 +38,7 @@ pub enum Inst {
         num: IndexV2,
         inner: Vec<Inst>,
     },
+    CodePoint(usize),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -84,6 +85,7 @@ impl Prog {
                         check(function, highest);
                         check(input, highest);
                     }
+                    Inst::CodePoint(_) => (),
                 }
             }
         }
@@ -139,7 +141,8 @@ impl Prog {
                         reindex_single(target, map, next_available);
                         reindex_single(function, map, next_available);
                         reindex_single(input, map, next_available);
-                    },
+                    }
+                    Inst::CodePoint(_) => (),
                 }
             }
         }
@@ -274,6 +277,8 @@ impl Prog {
 
                         recurse(inner, funs, next);
                     },
+
+                    Inst::CodePoint(_) => (),
                 }
             }
         }
@@ -318,6 +323,7 @@ impl Prog {
                             alive.remove(target);
                         }
                     },
+                    Inst::CodePoint(_) => (),
                 };
             }
         }
@@ -418,6 +424,7 @@ impl fmt::Display for Prog {
                         fmt_indent(f, indent)?;
                         writeln!(f, "{} := {}({});", target, function, input)?;
                     },
+                    Inst::CodePoint(_) => (),
                 }
             }
             Ok(())
