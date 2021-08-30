@@ -188,18 +188,46 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
             }
 
             TokenKind::For => {
-                tokens.next();
+                let for_span = tokens.next().unwrap().span;
 
-                let num = tokens.next().and_then(|t| t.var().cloned()).unwrap();
+                let (num, num_span) = match diag_unwarp(tokens.next(), file_id, for_span.clone())? {
+                    Token { kind: TokenKind::Var(var), span } => (var, span),
+                    t => {
+                        return Err(
+                            Diagnostic::error()
+                                .with_message("Expected variable after `for` keyword")
+                                .with_labels(vec![
+                                    Label::primary(file_id, t.span).with_message("invalid token here"),
+                                    Label::secondary(file_id, for_span.clone()).with_message("for keyword here"),
+                                ])
+                        );
+                    }
+                };
 
-                if tokens.next().map(|t| t.kind) != Some(TokenKind::Do) {
-                    panic!()
+                let do_token = diag_unwarp(tokens.next(), file_id, for_span.start..num_span.end)?;
+                if do_token.kind != TokenKind::Do {
+                    return Err(
+                        Diagnostic::error()
+                            .with_message("Expected start of code block")
+                            .with_labels(vec![
+                                Label::primary(file_id, do_token.span).with_message("invalid token here"),
+                                Label::secondary(file_id, for_span).with_message("for loop starts here"),
+                            ])
+                    );
                 }
 
                 let inner = parse_recursive(&mut tokens, file_id)?;
 
-                if tokens.next().map(|t| t.kind) != Some(TokenKind::Od) {
-                    panic!()
+                let od_token = diag_unwarp(tokens.next(), file_id, for_span.start..do_token.span.end)?;
+                if od_token.kind != TokenKind::Od {
+                    return Err(
+                        Diagnostic::error()
+                            .with_message("Wrong or missing code block delimiter")
+                            .with_labels(vec![
+                                Label::primary(file_id, od_token.span).with_message("invalid token here"),
+                                Label::secondary(file_id, do_token.span).with_message("code block starts here"),
+                            ])
+                    );
                 }
 
                 let block = Inst::For { num, inner };
@@ -223,14 +251,30 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
                     }
                 };
 
-                if diag_unwarp(tokens.next(), file_id, fn_span.start..target_span.end)?.kind != TokenKind::Do {
-                    panic!()
+                let do_token = diag_unwarp(tokens.next(), file_id, fn_span.start..target_span.end)?;
+                if do_token.kind != TokenKind::Do {
+                    return Err(
+                        Diagnostic::error()
+                            .with_message("Function name must be followed by a code block")
+                            .with_labels(vec![
+                                Label::primary(file_id, do_token.span).with_message("invalid token here"),
+                                Label::secondary(file_id, fn_span).with_message("function definition starts here"),
+                            ])
+                    );
                 }
 
                 let inst = parse_recursive(&mut tokens, file_id)?;
 
-                if diag_unwarp(tokens.next(), file_id, fn_span.start..target_span.end)?.kind != TokenKind::Od {
-                    panic!()
+                let od_token = diag_unwarp(tokens.next(), file_id, fn_span.start..target_span.end)?;
+                if od_token.kind != TokenKind::Od {
+                    return Err(
+                        Diagnostic::error()
+                            .with_message("Wrong or missing code block delimiter")
+                            .with_labels(vec![
+                                Label::primary(file_id, od_token.span).with_message("invalid token here"),
+                                Label::secondary(file_id, do_token.span).with_message("code block starts here"),
+                            ])
+                    );
                 }
 
                 let sub = Prog { inst };
