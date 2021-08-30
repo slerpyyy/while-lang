@@ -11,6 +11,12 @@ pub enum IndexV2 {
     Name(String),
 }
 
+impl IndexV2 {
+    pub fn is_zero(&self) -> bool {
+        matches!(self, &IndexV2::Int(ref num) if num.is_zero())
+    }
+}
+
 impl fmt::Display for IndexV2 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -70,8 +76,10 @@ impl ValueV2 {
 
 impl fmt::Display for ValueV2 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let num = BigUint::try_from(self.clone()).map_err(|_| std::fmt::Error)?;
-        write!(f, "{}", num)
+        match BigUint::try_from(self.clone()) {
+            Ok(num) => write!(f, "{}", num),
+            _ => write!(f, "??"),
+        }
     }
 }
 

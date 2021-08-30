@@ -170,6 +170,66 @@ impl Prog {
         self
     }
 
+    pub fn inline_functions(mut self) -> Self {
+        fn recurse(inst_vec: &mut Vec<Inst>, funs: &mut HashMap<IndexV2, ValueV2>, next: &mut BigUint) {
+            for inst in inst_vec.iter_mut() {
+                match inst {
+                    Inst::Add { target, .. } |
+                    Inst::Sub { target, .. } => {
+                        funs.remove(target);
+                    },
+
+                    Inst::Set { target, value } => {
+                        funs.insert(target.clone(), value.clone());
+                    },
+
+                    Inst::Call { target, function, input } => {
+                        let x0 = IndexV2::Int(0_u8.into());
+                        *next += 1_u8;
+                        let temp = IndexV2::Int(next.clone());
+
+                        let mut expand = Vec::new();
+
+                        if !target.is_zero() {
+                            expand.push(Inst::Set { target: temp.clone(), value: 0_u8.into() });
+                            expand.push(Inst::Add { target: temp.clone(), left: x0.clone(), right: temp.clone() });
+                        }
+
+                        if !input.is_zero() {
+                            expand.push(Inst::Set { target: x0.clone(), value: 0_u8.into() });
+                            expand.push(Inst::Add { target: x0.clone(), left: input.clone(), right: x0.clone() });
+                        }
+
+                        let fun_def: Prog = funs.get(function).unwrap().clone().try_into().unwrap();
+                        expand.push(Inst::Block { inner: fun_def.inst });
+
+                        if !target.is_zero() {
+                            expand.push(Inst::Set { target: target.clone(), value: 0_u8.into() });
+                            expand.push(Inst::Add { target: target.clone(), left: x0.clone(), right: target.clone() });
+
+                            expand.push(Inst::Set { target: x0.clone(), value: 0_u8.into() });
+                            expand.push(Inst::Add { target: x0.clone(), left: temp, right: x0.clone() });
+                        }
+
+                        recurse(&mut expand, funs, next);
+
+                        *inst = Inst::Block { inner: expand };
+                    }
+
+                    // TODO: make this loop safe
+                    Inst::Block { inner } |
+                    Inst::While { inner, .. } |
+                    Inst::For { inner, .. } => recurse(inner, funs, next),
+                }
+            }
+        }
+
+        let mut next_available = self.highest_index();
+        let mut funs: HashMap<IndexV2, ValueV2> = HashMap::<IndexV2, ValueV2>::new();
+        recurse(&mut self.inst, &mut funs, &mut next_available);
+        self
+    }
+
     #[must_use]
     pub fn translate_while(mut self) -> Self {
         fn recurse(inst_vec: &mut Vec<Inst>, reserved: &BigUint, next_available: &mut BigUint) {

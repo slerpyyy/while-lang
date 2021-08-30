@@ -18,6 +18,9 @@ enum SubCommand {
     Run {
         input_file: String
     },
+    Rewrite {
+        input_file: String
+    },
 }
 
 fn main() {
@@ -58,5 +61,20 @@ fn main() {
             }
             println!("}}");
         }
+        SubCommand::Rewrite { input_file } => {
+            let code = std::fs::read_to_string(&input_file).unwrap();
+            let file_id = files.add(&input_file, &code);
+
+            let prog = match compile(&code, file_id) {
+                Ok(s) => s,
+                Err(error) => {
+                    term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
+                    return;
+                }
+            };
+
+            let prog = prog.inline_functions().inline_blocks().translate_while();
+            println!("{}", prog);
+        },
     }
 }
