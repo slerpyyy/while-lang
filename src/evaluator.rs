@@ -85,7 +85,7 @@ impl Evaluator {
     }
 
     pub fn debug_print(&self, code: &str, context: usize) {
-        let curr_ln = code[..self.position].lines().count();
+        let curr_ln = code[..self.position].chars().filter(|&ch| ch == '\n').count();
         let first_ln = curr_ln.saturating_sub(context / 2);
 
         println!("\nCode Point:");
@@ -94,7 +94,6 @@ impl Evaluator {
                 true => '>',
                 false => '|',
             };
-
             println!("{:8} {} {}", k, sep, line);
         }
 
