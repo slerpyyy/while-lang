@@ -37,9 +37,14 @@ impl Evaluator {
             Inst::Sub { target, left, right } => {
                 let left: BigUint = self.state.get(&left).cloned().unwrap_or_default().try_into().unwrap();
                 let right: BigUint = self.state.get(&right).cloned().unwrap_or_default().try_into().unwrap();
-                self.state.insert(target, ValueV2::Int(left - right));
+                let value = if right < left { left - right } else { 0_u8.into() };
+                self.state.insert(target, ValueV2::Int(value));
             }
             Inst::Set { target, value } => {
+                self.state.insert(target, value);
+            }
+            Inst::Copy { target, source } => {
+                let value = self.state.get(&source).cloned().unwrap_or_default();
                 self.state.insert(target, value);
             }
             Inst::Block { inner } => {
@@ -139,7 +144,7 @@ mod test {
             ] },
         ] };
 
-        let prog = prog.translate_while();
+        let prog = prog.for_to_while();
         let mut eval = Evaluator::new(prog);
         eval.run();
 

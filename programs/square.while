@@ -7,8 +7,7 @@ od
 
 # the nth square number
 fn Square do
-    Iter := 0;
-    Iter := Iter + x0;
+    Iter := x0;
 
     x0 := 0;
     Index := 0;

@@ -22,6 +22,10 @@ pub enum Inst {
         target: IndexV2,
         value: ValueV2,
     },
+    Copy {
+        target: IndexV2,
+        source: IndexV2,
+    },
     Call {
         target: IndexV2,
         function: IndexV2,
@@ -60,14 +64,18 @@ impl Prog {
         fn recurse(inst_vec: &[Inst], highest: &mut BigUint) {
             for inst in inst_vec {
                 match inst {
-                    Inst::Set { target, .. } => {
-                        check(target, highest);
-                    }
                     Inst::Add {target, left, right} |
                     Inst::Sub {target, left, right}  => {
                         check(target, highest);
                         check(left, highest);
                         check(right, highest);
+                    }
+                    Inst::Set { target, .. } => {
+                        check(target, highest);
+                    }
+                    Inst::Copy { target, source } => {
+                        check(target, highest);
+                        check(source, highest);
                     }
                     Inst::Block { inner } => {
                         recurse(inner, highest);
@@ -117,14 +125,18 @@ impl Prog {
         ) {
             for inst in inst_vec {
                 match inst {
-                    Inst::Set { target, .. } => {
-                        reindex_single(target, map, next_available);
-                    }
                     Inst::Add { target, left, right } |
                     Inst::Sub { target, left, right } => {
                         reindex_single(target, map, next_available);
                         reindex_single(left, map, next_available);
                         reindex_single(right, map, next_available);
+                    }
+                    Inst::Set { target, .. } => {
+                        reindex_single(target, map, next_available);
+                    }
+                    Inst::Copy { target, source } => {
+                        reindex_single(target, map, next_available);
+                        reindex_single(source, map, next_available);
                     }
                     Inst::Block { inner } => {
                         recurse(inner, map, next_available);
@@ -184,6 +196,10 @@ impl Prog {
                             lut.get(left).into_iter().for_each(|x| *left = x.clone());
                             lut.get(right).into_iter().for_each(|x| *right = x.clone());
                         },
+                        Inst::Set { .. } => (),
+                        Inst::Copy { source, .. } => {
+                            lut.get(source).into_iter().for_each(|x| *source = x.clone());
+                        },
                         Inst::Call { function, input, .. } => {
                             lut.get(function).into_iter().for_each(|x| *function = x.clone());
                             lut.get(input).into_iter().for_each(|x| *input = x.clone());
@@ -201,7 +217,7 @@ impl Prog {
                             translate(inner, lut, next, true);
                             translate(inner, lut, next, scan_only);
                         },
-                        _ => (),
+                        Inst::CodePoint(_) => (),
                     }
                 }
 
@@ -209,6 +225,7 @@ impl Prog {
                     Inst::Add { target, .. } |
                     Inst::Sub { target, .. } |
                     Inst::Set { target, .. } |
+                    Inst::Copy { target, .. } |
                     Inst::Call { target, .. } => {
                         if !lut.contains_key(target) {
                             *next += 1_u8;
@@ -237,13 +254,19 @@ impl Prog {
                         funs.insert(target.clone(), value.clone());
                     },
 
+                    Inst::Copy { target, source } => {
+                        match funs.get(source).cloned() {
+                            Some(value) => funs.insert(target.clone(), value),
+                            None => funs.remove(target),
+                        };
+                    },
+
                     Inst::Call { target, function, input } => {
                         funs.remove(target);
 
                         let mut expand = Vec::new();
                         if input != target {
-                            expand.push(Inst::Set { target: target.clone(), value: 0_u8.into() });
-                            expand.push(Inst::Add { target: target.clone(), left: input.clone(), right: target.clone() });
+                            expand.push(Inst::Copy { target: target.clone(), source: input.clone() });
                         }
 
                         let fun_def: Prog = funs.get(function).unwrap().clone().try_into().unwrap();
@@ -300,6 +323,10 @@ impl Prog {
                         alive.insert(left.clone());
                         alive.insert(right.clone());
                     },
+                    Inst::Copy { target, source } => {
+                        alive.remove(target);
+                        alive.insert(source.clone());
+                    },
                     Inst::Call { target, function, input } => {
                         alive.remove(target);
                         alive.insert(function.clone());
@@ -318,6 +345,7 @@ impl Prog {
                     },
                     Inst::Set { target, .. } => {
                         if !alive.contains(target) {
+                            // Stomp set with noop
                             *inst = Inst::Block { inner: vec![] };
                         } else {
                             alive.remove(target);
@@ -334,7 +362,43 @@ impl Prog {
     }
 
     #[must_use]
-    pub fn translate_while(mut self) -> Self {
+    pub fn expand_copy(mut self) -> Self {
+        fn recurse(inst_vec: &mut Vec<Inst>) {
+            let mut index = 0;
+            while index < inst_vec.len() {
+                match inst_vec.get_mut(index) {
+                    Some(Inst::Copy { ref target, ref source }) => {
+                        if target == source {
+                            inst_vec.remove(index);
+                            continue; // skip index increment
+                        }
+
+                        let set_inst = Inst::Set { target: target.clone(), value: 0_u8.into() };
+                        let add_inst = Inst::Add { target: target.clone(), left: target.clone(), right: source.clone() };
+
+                        *inst_vec.get_mut(index).unwrap() = set_inst;
+                        inst_vec.insert(index, add_inst);
+                    },
+
+                    Some(
+                        Inst::Block { inner } |
+                        Inst::While { inner, .. } |
+                        Inst::For { inner, .. }
+                    ) => recurse(inner),
+
+                    _ => (),
+                }
+
+                index += 1;
+            }
+        }
+
+        recurse(&mut self.inst);
+        self
+    }
+
+    #[must_use]
+    pub fn for_to_while(mut self) -> Self {
         fn recurse(inst_vec: &mut Vec<Inst>, reserved: &BigUint, next_available: &mut BigUint) {
             for inst in inst_vec {
                 match inst {
@@ -368,11 +432,6 @@ impl Prog {
         recurse(&mut self.inst, &reserved, &mut next_available);
         self
     }
-
-    #[must_use]
-    pub fn translate_for(self) -> Self {
-        unimplemented!()
-    }
 }
 
 impl fmt::Display for Prog {
@@ -398,6 +457,10 @@ impl fmt::Display for Prog {
                     Inst::Set { target, value } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "{} := {};", target, value)?;
+                    }
+                    Inst::Copy { target, source } => {
+                        fmt_indent(f, indent)?;
+                        writeln!(f, "{} := {};", target, source)?;
                     }
                     Inst::Block { inner } => {
                         fmt_indent(f, indent)?;
@@ -632,7 +695,7 @@ od
         ] };
         println!("{}", prog);
 
-        let prog = prog.translate_while();
+        let prog = prog.for_to_while();
         println!("{}", prog);
     }
 

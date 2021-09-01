@@ -19,6 +19,7 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
     }
 
     while let Some(token) = tokens.peek() {
+        #[cfg(not(test))]
         out.push(Inst::CodePoint(token.span.start));
 
         match token.kind.clone() {
@@ -57,8 +58,10 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
                     }
                 };
 
-                let open = match diag_unwarp(tokens.next(), file_id, var.span.start..left_span.end)? {
-                    op if matches!(op.kind, TokenKind::Plus | TokenKind::Minus) => {
+                let open = match tokens.peek() {
+                    Some(&Token { kind: TokenKind::Plus | TokenKind::Minus, .. }) => {
+                        let op = tokens.next().unwrap();
+
                         let right = match diag_unwarp(tokens.next(), file_id, var.span.start..op.span.end)? {
                             Token { kind: TokenKind::Var(var), .. } => var,
                             t => {
@@ -82,16 +85,10 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
 
                         continue;
                     },
-                    t if matches!(t.kind, TokenKind::LeftParen) => t,
-                    t => {
-                        return Err(
-                            Diagnostic::error()
-                                .with_message("Expected either numeric operator or parentheses")
-                                .with_labels(vec![
-                                    Label::primary(file_id, t.span).with_message("invalid token here"),
-                                    Label::secondary(file_id, eq_token.span).with_message("assignment operator here"),
-                                ])
-                        );
+                    Some(&Token { kind: TokenKind::LeftParen, .. }) => tokens.next().unwrap(),
+                    _ => {
+                        out.push(Inst::Copy { target, source: left });
+                        continue;
                     }
                 };
 

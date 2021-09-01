@@ -104,8 +104,9 @@ fn main() {
 
             let prog = prog
                 .inline_functions()
-                .translate_while()
+                .for_to_while()
                 .unused_sets()
+                .expand_copy()
                 .inline_blocks();
 
             println!("{}", prog);
