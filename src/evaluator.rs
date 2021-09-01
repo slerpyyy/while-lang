@@ -47,6 +47,19 @@ impl Evaluator {
                 let value = self.state.get(&source).cloned().unwrap_or_default();
                 self.state.insert(target, value);
             }
+            Inst::Merge { target, left, right } => {
+                let tuple = ValueV2::Tuple(
+                    Box::new(self.state.get(&left).cloned().unwrap_or_default()),
+                    Box::new(self.state.get(&right).cloned().unwrap_or_default()),
+                );
+                self.state.insert(target, tuple);
+            }
+            Inst::Split { left, right, source } => {
+                let value = self.state.get(&source).cloned().unwrap_or_default();
+                let (left_value, right_value) = value.try_into().unwrap();
+                self.state.insert(left, left_value);
+                self.state.insert(right, right_value);
+            }
             Inst::Block { inner } => {
                 self.work.extend(inner.into_iter().rev());
             }

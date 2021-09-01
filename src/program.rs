@@ -26,6 +26,16 @@ pub enum Inst {
         target: IndexV2,
         source: IndexV2,
     },
+    Merge {
+        target: IndexV2,
+        left: IndexV2,
+        right: IndexV2,
+    },
+    Split {
+        left: IndexV2,
+        right: IndexV2,
+        source: IndexV2,
+    },
     Call {
         target: IndexV2,
         function: IndexV2,
@@ -65,7 +75,8 @@ impl Prog {
             for inst in inst_vec {
                 match inst {
                     Inst::Add {target, left, right} |
-                    Inst::Sub {target, left, right}  => {
+                    Inst::Sub {target, left, right} |
+                    Inst::Merge { target, left, right } => {
                         check(target, highest);
                         check(left, highest);
                         check(right, highest);
@@ -77,6 +88,11 @@ impl Prog {
                         check(target, highest);
                         check(source, highest);
                     }
+                    Inst::Split { left, right, source } => {
+                        check(left, highest);
+                        check(right, highest);
+                        check(source, highest);
+                    },
                     Inst::Block { inner } => {
                         recurse(inner, highest);
                     }
@@ -126,7 +142,8 @@ impl Prog {
             for inst in inst_vec {
                 match inst {
                     Inst::Add { target, left, right } |
-                    Inst::Sub { target, left, right } => {
+                    Inst::Sub { target, left, right } |
+                    Inst::Merge { target, left, right } => {
                         reindex_single(target, map, next_available);
                         reindex_single(left, map, next_available);
                         reindex_single(right, map, next_available);
@@ -136,6 +153,11 @@ impl Prog {
                     }
                     Inst::Copy { target, source } => {
                         reindex_single(target, map, next_available);
+                        reindex_single(source, map, next_available);
+                    }
+                    Inst::Split { left, right, source } => {
+                        reindex_single(left, map, next_available);
+                        reindex_single(right, map, next_available);
                         reindex_single(source, map, next_available);
                     }
                     Inst::Block { inner } => {
@@ -192,12 +214,14 @@ impl Prog {
                 if !scan_only {
                     match inst {
                         Inst::Add { left, right, .. } |
-                        Inst::Sub { left, right, .. } => {
+                        Inst::Sub { left, right, .. } |
+                        Inst::Merge { left, right, .. } => {
                             lut.get(left).into_iter().for_each(|x| *left = x.clone());
                             lut.get(right).into_iter().for_each(|x| *right = x.clone());
                         },
                         Inst::Set { .. } => (),
-                        Inst::Copy { source, .. } => {
+                        Inst::Copy { source, .. } |
+                        Inst::Split { source, .. } => {
                             lut.get(source).into_iter().for_each(|x| *source = x.clone());
                         },
                         Inst::Call { function, input, .. } => {
@@ -237,6 +261,24 @@ impl Prog {
                             lut.get(target).into_iter().for_each(|x| *target = x.clone());
                         }
                     },
+                    Inst::Split { left, right, .. } => {
+                        if !lut.contains_key(left) {
+                            *next += 1_u8;
+                            let new_target = IndexV2::Int(next.clone());
+                            lut.insert(left.clone(), new_target);
+                        }
+
+                        if !lut.contains_key(right) {
+                            *next += 1_u8;
+                            let new_target = IndexV2::Int(next.clone());
+                            lut.insert(right.clone(), new_target);
+                        }
+
+                        if !scan_only {
+                            lut.get(left).into_iter().for_each(|x| *left = x.clone());
+                            lut.get(right).into_iter().for_each(|x| *right = x.clone());
+                        }
+                    }
                     _ => (),
                 }
             }
@@ -259,6 +301,17 @@ impl Prog {
                             Some(value) => funs.insert(target.clone(), value),
                             None => funs.remove(target),
                         };
+                    },
+
+                    // TODO: Make this smarter
+                    Inst::Merge { target, .. } => {
+                        funs.remove(target);
+                    },
+
+                    // TODO: Make this smarter
+                    Inst::Split { left, right, .. } => {
+                        funs.remove(left);
+                        funs.remove(right);
                     },
 
                     Inst::Call { target, function, input } => {
@@ -318,13 +371,19 @@ impl Prog {
             for inst in inst_vec.iter_mut().rev() {
                 match inst {
                     Inst::Add { target, left, right } |
-                    Inst::Sub { target, left, right } => {
+                    Inst::Sub { target, left, right } |
+                    Inst::Merge { target, left, right } => {
                         alive.remove(target);
                         alive.insert(left.clone());
                         alive.insert(right.clone());
                     },
                     Inst::Copy { target, source } => {
                         alive.remove(target);
+                        alive.insert(source.clone());
+                    },
+                    Inst::Split { left, right, source } => {
+                        alive.remove(left);
+                        alive.remove(right);
                         alive.insert(source.clone());
                     },
                     Inst::Call { target, function, input } => {
@@ -461,6 +520,14 @@ impl fmt::Display for Prog {
                     Inst::Copy { target, source } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "{} := {};", target, source)?;
+                    }
+                    Inst::Merge { target, left, right } => {
+                        fmt_indent(f, indent)?;
+                        writeln!(f, "{} := ({}, {});", target, left, right)?;
+                    }
+                    Inst::Split { left, right, source } => {
+                        fmt_indent(f, indent)?;
+                        writeln!(f, "({}, {}) := {};", left, right, source)?;
                     }
                     Inst::Block { inner } => {
                         fmt_indent(f, indent)?;

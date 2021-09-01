@@ -18,6 +18,61 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
         }
     }
 
+    let parse_tuple = |tokens: &mut Peekable<_>, initial: Token| -> Result<_, Diagnostic<usize>> {
+        let open_span = initial.span;
+
+        let (left, left_span) = match diag_unwarp(tokens.next(), file_id, open_span.clone())? {
+            Token { kind: TokenKind::Var(var), span } => (var, span),
+            t => {
+                return Err(
+                    Diagnostic::error()
+                        .with_message("Expected variable in tuple expression")
+                        .with_labels(vec![
+                            Label::primary(file_id, t.span).with_message("invalid token here"),
+                        ])
+                );
+            }
+        };
+
+        let _ = match diag_unwarp(tokens.next(), file_id, open_span.start..left_span.end)? {
+            Token{ kind: TokenKind::Comma, span } => span,
+            t => return Err(
+                Diagnostic::error()
+                    .with_message("Expected comma between tuple elements")
+                    .with_labels(vec![
+                        Label::primary(file_id, t.span).with_message("invalid token here"),
+                    ])
+            ),
+        };
+
+        let (right, _) = match diag_unwarp(tokens.next(), file_id, open_span.clone())? {
+            Token { kind: TokenKind::Var(var), span } => (var, span),
+            t => {
+                return Err(
+                    Diagnostic::error()
+                        .with_message("Expected variable in tuple expression")
+                        .with_labels(vec![
+                            Label::primary(file_id, t.span).with_message("invalid token here"),
+                        ])
+                );
+            }
+        };
+
+        let close_span = match diag_unwarp(tokens.next(), file_id, open_span.start..left_span.end)? {
+            Token{ kind: TokenKind::RightParen, span } => span,
+            t => return Err(
+                Diagnostic::error()
+                    .with_message("Expected closing tuple delimiter")
+                    .with_labels(vec![
+                        Label::primary(file_id, t.span).with_message("invalid token here"),
+                        Label::secondary(file_id, open_span).with_message("tuple starts here"),
+                    ])
+            ),
+        };
+
+        Ok((left, right, open_span.start..close_span.end))
+    };
+
     while let Some(token) = tokens.peek() {
         #[cfg(not(test))]
         out.push(Inst::CodePoint(token.span.start));
@@ -45,6 +100,11 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
                         out.push(Inst::Set { target, value: value.into() });
                         continue;
                     },
+                    t @ Token { kind: TokenKind::LeftParen, .. } => {
+                        let (left, right, _) = parse_tuple(&mut tokens, t)?;
+                        out.push(Inst::Merge { target, left, right });
+                        continue;
+                    }
                     Token { kind: TokenKind::Var(var), span } => (var, span),
                     t => {
                         return Err(
@@ -116,6 +176,39 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
                 }
 
                 out.push(Inst::Call { target, function: left, input  })
+            }
+
+            TokenKind::LeftParen => {
+                let left_paren = tokens.next().unwrap();
+                let (left, right, tuple_span) = parse_tuple(&mut tokens, left_paren)?;
+
+                let eq_span = match diag_unwarp(tokens.next(), file_id, tuple_span.clone())? {
+                    Token{ kind: TokenKind::Eq, span } => span,
+                    t => return Err(
+                        Diagnostic::error()
+                            .with_message("Expected operator `:=` after tuple expression")
+                            .with_labels(vec![
+                                Label::primary(file_id, t.span).with_message("invalid token here"),
+                                Label::secondary(file_id, tuple_span).with_message("tuple here"),
+                            ])
+                    ),
+                };
+
+                let (source, _) = match diag_unwarp(tokens.next(), file_id, tuple_span.start..eq_span.end)? {
+                    Token { kind: TokenKind::Var(var), span } => (var, span),
+                    t => {
+                        return Err(
+                            Diagnostic::error()
+                                .with_message("Expected variable after assignment operator")
+                                .with_labels(vec![
+                                    Label::primary(file_id, t.span).with_message("invalid token here"),
+                                    Label::secondary(file_id, eq_span).with_message("assignment operator here"),
+                                ])
+                        );
+                    }
+                };
+
+                out.push(Inst::Split { left, right, source })
             }
 
             TokenKind::Semicolon => {
@@ -444,6 +537,37 @@ mod test {
                 right: 1_u8.into(),
             }],
         }];
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn merge_and_split() {
+        let tokens = vec![
+            Token::no_span(TokenKind::Var(2_u8.into())),
+            Token::no_span(TokenKind::Eq),
+            Token::no_span(TokenKind::LeftParen),
+            Token::no_span(TokenKind::Var(0_u8.into())),
+            Token::no_span(TokenKind::Comma),
+            Token::no_span(TokenKind::Var(1_u8.into())),
+            Token::no_span(TokenKind::RightParen),
+            Token::no_span(TokenKind::Semicolon),
+
+            Token::no_span(TokenKind::LeftParen),
+            Token::no_span(TokenKind::Var(0_u8.into())),
+            Token::no_span(TokenKind::Comma),
+            Token::no_span(TokenKind::Var(1_u8.into())),
+            Token::no_span(TokenKind::RightParen),
+            Token::no_span(TokenKind::Eq),
+            Token::no_span(TokenKind::Var(2_u8.into())),
+            Token::no_span(TokenKind::Semicolon),
+        ];
+
+        let result = parse(tokens, 0).unwrap().inst;
+        let expected = vec![
+            Inst::Merge { target: 2_u8.into(), left: 0_u8.into(), right: 1_u8.into() },
+            Inst::Split { left: 0_u8.into(), right: 1_u8.into(), source: 2_u8.into() },
+        ];
 
         assert_eq!(result, expected);
     }

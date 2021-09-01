@@ -3,7 +3,7 @@ use std::{convert::{TryFrom, TryInto}, fmt};
 use num_bigint::BigUint;
 use num_traits::Zero;
 
-use crate::{Inst, Prog, pair};
+use crate::{Inst, Prog, pair, pair_inv};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum IndexV2 {
@@ -116,6 +116,27 @@ impl TryFrom<ValueV2> for Prog {
                 num.try_into()
             },
             ValueV2::Prog(prog) => Ok(prog),
+        }
+    }
+}
+
+impl TryFrom<ValueV2> for (ValueV2, ValueV2) {
+    type Error = ();
+
+    fn try_from(value: ValueV2) -> Result<Self, Self::Error> {
+        match value {
+            ValueV2::Int(num) => {
+                let (left, right) = pair_inv(num);
+                Ok((ValueV2::Int(left), ValueV2::Int(right)))
+            },
+            ValueV2::Tuple(left, right) => {
+                Ok((*left, *right))
+            },
+            ValueV2::Prog(prog) => {
+                let num: BigUint = prog.try_into()?;
+                let (left, right) = pair_inv(num);
+                Ok((ValueV2::Int(left), ValueV2::Int(right)))
+            },
         }
     }
 }
