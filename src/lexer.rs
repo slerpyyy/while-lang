@@ -38,7 +38,7 @@ impl Token {
     }
 
     #[must_use]
-    pub fn no_span(kind: TokenKind) -> Self {
+    pub const fn no_span(kind: TokenKind) -> Self {
         Self { kind, span: 0..0 }
     }
 
@@ -65,12 +65,7 @@ where
     num
 }
 
-#[must_use]
 pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> {
-    let mut out = Vec::new();
-    let mut iter = code.chars().peekable();
-    let mut pos = 0;
-
     fn check_inc(actual: Option<char>, expected: char, position: &mut usize) -> bool {
         let check = actual == Some(expected);
         if check {
@@ -90,11 +85,15 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
         }
     }
 
+    let mut out = Vec::new();
+    let mut iter = code.chars().peekable();
+    let mut pos = 0;
+
     while let Some(&c) = iter.peek() {
         let start = pos;
         let kind = match c {
             '#' => {
-                while let Some(ch) = iter.next() {
+                for ch in &mut iter {
                     pos += ch.len_utf8();
                     if ch == '\n' {
                         break;
@@ -103,7 +102,7 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
                 continue;
             }
             '{' => {
-                while let Some(ch) = iter.next() {
+                for ch in &mut iter {
                     pos += ch.len_utf8();
                     if ch == '}' {
                         break;
@@ -128,7 +127,7 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
                     pos += '='.len_utf8();
                     TokenKind::Eq
                 } else {
-                    Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `:=`?")))?
+                    return Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `:=`?")))
                 }
             }
             '/' => {
@@ -138,12 +137,12 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
                     pos += '='.len_utf8();
                     TokenKind::Neq
                 } else {
-                    Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `/=`?")))?
+                    return Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `/=`?")))
                 }
             }
             '=' => {
                 pos += c.len_utf8();
-                Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `:=` or `/=`?")))?
+                return Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `:=` or `/=`?")))
             }
             ';' => {
                 pos += c.len_utf8();
@@ -195,7 +194,7 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
                 {
                     TokenKind::While
                 } else {
-                    Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `while`?")))?
+                    return Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `while`?")))
                 }
             }
             'f' => {
@@ -208,7 +207,7 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
                 && check_inc(iter.next(), 'r', &mut pos) {
                     TokenKind::For
                 } else {
-                    Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `for` or `fn`?")))?
+                    return Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `for` or `fn`?")))
                 }
             }
             'd' => {
@@ -217,7 +216,7 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
                 if check_inc(iter.next(), 'o', &mut pos) {
                     TokenKind::Do
                 } else {
-                    Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `do`?")))?
+                    return Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `do`?")))
                 }
             }
             'o' => {
@@ -226,7 +225,7 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
                 if check_inc(iter.next(), 'd', &mut pos) {
                     TokenKind::Od
                 } else {
-                    Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `od`?")))?
+                    return Err(unexpected_symbol(file_id, start..pos, Some("help: Did you mean `od`?")))
                 }
             }
             ' ' | '\t' | '\n' | '\r' => {
@@ -251,13 +250,13 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
                 pos += c.len_utf8();
                 let help = if c.is_ascii_alphabetic() {
                     Some("help: Identifiers must start with an uppercase character or underscore")
-                } else if !c.is_ascii() {
-                    Some("help: This interpreter does not support unicode")
-                } else {
+                } else if c.is_ascii() {
                     None
+                } else {
+                    Some("help: This interpreter does not support unicode")
                 };
 
-                Err(unexpected_symbol(file_id, start..pos, help))?
+                return Err(unexpected_symbol(file_id, start..pos, help))
             },
         };
 

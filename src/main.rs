@@ -59,7 +59,7 @@ fn main() {
             ev.run();
 
             println!("{{");
-            for (key, value) in ev.state.into_iter() {
+            for (key, value) in ev.state().into_iter() {
                 println!("    {} => {}", key, value);
             }
             println!("}}");
@@ -85,7 +85,7 @@ fn main() {
 
             let _ = std::process::Command::new("cmd.exe").arg("/c").arg("cls").status();
             println!("{{");
-            for (key, value) in ev.state.into_iter() {
+            for (key, value) in ev.state().into_iter() {
                 println!("    {} => {}", key, value);
             }
             println!("}}");

@@ -42,15 +42,15 @@ pub enum Inst {
         input: IndexV2,
     },
     Block {
-        inner: Vec<Inst>,
+        inner: Vec<Self>,
     },
     While {
         cond: IndexV2,
-        inner: Vec<Inst>,
+        inner: Vec<Self>,
     },
     For {
         num: IndexV2,
-        inner: Vec<Inst>,
+        inner: Vec<Self>,
     },
     CodePoint(usize),
 }
@@ -403,11 +403,11 @@ impl Prog {
                         alive.insert(num.clone());
                     },
                     Inst::Set { target, .. } => {
-                        if !alive.contains(target) {
+                        if alive.contains(target) {
+                            alive.remove(target);
+                        } else {
                             // Stomp set with noop
                             *inst = Inst::Block { inner: vec![] };
-                        } else {
-                            alive.remove(target);
                         }
                     },
                     Inst::CodePoint(_) => (),
@@ -478,9 +478,7 @@ impl Prog {
                         *next_available += 1_u8;
                     }
                     Inst::Block {inner} |
-                    Inst::While {inner, ..} => {
-                        recurse(inner, reserved, next_available)
-                    }
+                    Inst::While {inner, ..} => recurse(inner, reserved, next_available),
                     _ => (),
                 }
             }
@@ -497,7 +495,7 @@ impl fmt::Display for Prog {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[inline]
         fn fmt_indent(f: &mut fmt::Formatter<'_>, indent: u32) -> fmt::Result {
-            for _ in 0..indent { write!(f, "  ")? }
+            for _ in 0..indent { write!(f, "  ")?; }
             Ok(())
         }
 
@@ -675,7 +673,7 @@ mod test {
             let (x, y) = pair_inv(n);
             let z = pair(x, y);
 
-            assert_eq!(n, z, "in={}, x={}, y={}, out={}", n, x, y, z)
+            assert_eq!(n, z, "in={}, x={}, y={}, out={}", n, x, y, z);
         }
     }
 
@@ -687,7 +685,7 @@ mod test {
             let z = pair(x.clone(), y.clone());
 
             assert_eq!(&n, &z, "in={}, x={}, y={}, out={}", &n, &x, &y, &z);
-            n = n + BigUint::from(1_u8);
+            n += 1_u8;
         }
     }
 
@@ -768,7 +766,7 @@ od
 
     #[test]
     fn from_big_int_simple() {
-        let num: BigUint = 13499359_u64.into();
+        let num: BigUint = 13_499_359_u64.into();
         let prog: Prog = num.try_into().unwrap();
 
         let expected = "\

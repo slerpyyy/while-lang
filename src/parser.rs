@@ -5,8 +5,6 @@ use crate::*;
 use std::{iter::Peekable, ops::Range};
 
 fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_id: usize) -> Result<Vec<Inst>, Diagnostic<usize>> {
-    let mut out = Vec::new();
-
     fn diag_unwarp<T>(option: Option<T>, file_id: usize, span: Range<usize>) -> Result<T, Diagnostic<usize>> {
         match option {
             Some(value) => Ok(value),
@@ -73,6 +71,7 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
         Ok((left, right, open_span.start..close_span.end))
     };
 
+    let mut out = Vec::new();
     while let Some(token) = tokens.peek() {
         #[cfg(not(test))]
         out.push(Inst::CodePoint(token.span.start));
@@ -97,7 +96,7 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
 
                 let (left, left_span) = match diag_unwarp(tokens.next(), file_id, var.span.start..eq_token.span.end)? {
                     Token { kind: TokenKind::Const(value), .. } => {
-                        out.push(Inst::Set { target, value: value.into() });
+                        out.push(Inst::Set { target, value });
                         continue;
                     },
                     t @ Token { kind: TokenKind::LeftParen, .. } => {
@@ -175,7 +174,7 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
                     );
                 }
 
-                out.push(Inst::Call { target, function: left, input  })
+                out.push(Inst::Call { target, function: left, input  });
             }
 
             TokenKind::LeftParen => {
@@ -208,7 +207,7 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
                     }
                 };
 
-                out.push(Inst::Split { left, right, source })
+                out.push(Inst::Split { left, right, source });
             }
 
             TokenKind::Semicolon => {
@@ -371,7 +370,7 @@ fn parse_recursive(mut tokens: &mut Peekable<impl Iterator<Item = Token>>, file_
 
                 let sub = Prog { inst };
                 let value = ValueV2::Prog(sub);
-                out.push(Inst::Set { target, value })
+                out.push(Inst::Set { target, value });
             }
 
             TokenKind::RightBracket | TokenKind::Od => break,

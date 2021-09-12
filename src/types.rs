@@ -12,6 +12,7 @@ pub enum IndexV2 {
 }
 
 impl IndexV2 {
+    #[must_use]
     pub fn is_zero(&self) -> bool {
         matches!(self, &IndexV2::Int(ref num) if num.is_zero())
     }
@@ -39,30 +40,31 @@ impl TryFrom<IndexV2> for BigUint {
 
 impl From<BigUint> for IndexV2 {
     fn from(value: BigUint) -> Self {
-        IndexV2::Int(value)
+        Self::Int(value)
     }
 }
 
 impl From<u8> for IndexV2 {
     fn from(value: u8) -> Self {
-        IndexV2::Int(value.into())
+        Self::Int(value.into())
     }
 }
 
 impl From<String> for IndexV2 {
     fn from(value: String) -> Self {
-        IndexV2::Name(value)
+        Self::Name(value)
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum ValueV2 {
     Int(BigUint),
-    Tuple(Box<ValueV2>, Box<ValueV2>),
+    Tuple(Box<Self>, Box<Self>),
     Prog(Prog),
 }
 
 impl ValueV2 {
+    #[must_use]
     pub fn is_zero(&self) -> bool {
         match self {
             ValueV2::Int(num) => num.is_zero(),
