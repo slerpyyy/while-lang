@@ -55,11 +55,11 @@ fn main() {
                 }
             };
 
-            let mut ev = Evaluator::new(prog);
+            let mut ev = Evaluator::new(&prog);
             ev.run();
 
             println!("{{");
-            for (key, value) in ev.state().into_iter() {
+            for (key, value) in ev.base.state.into_iter() {
                 println!("    {} => {}", key, value);
             }
             println!("}}");
@@ -76,7 +76,7 @@ fn main() {
                 }
             };
 
-            let mut ev = Evaluator::new(prog);
+            let mut ev = Evaluator::new(&prog);
             while ev.step() {
                 let _ = std::process::Command::new("cmd.exe").arg("/c").arg("cls").status();
                 ev.debug_print(&code, 7);
@@ -85,7 +85,7 @@ fn main() {
 
             let _ = std::process::Command::new("cmd.exe").arg("/c").arg("cls").status();
             println!("{{");
-            for (key, value) in ev.state().into_iter() {
+            for (key, value) in ev.base.state.into_iter() {
                 println!("    {} => {}", key, value);
             }
             println!("}}");
