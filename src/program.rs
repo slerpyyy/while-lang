@@ -435,8 +435,8 @@ impl Prog {
                         let set_inst = Inst::Set { target: target.clone(), value: 0_u8.into() };
                         let add_inst = Inst::Add { target: target.clone(), left: target.clone(), right: source.clone() };
 
-                        *inst_vec.get_mut(index).unwrap() = set_inst;
-                        inst_vec.insert(index, add_inst);
+                        *inst_vec.get_mut(index).unwrap() = add_inst;
+                        inst_vec.insert(index, set_inst);
                     },
 
                     Some(

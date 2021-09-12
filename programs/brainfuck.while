@@ -1,0 +1,157 @@
+# set of instructions
+B1 := 1;   # +
+B2 := 2;   # -
+B3 := 3;   # <
+B4 := 4;   # >
+B5 := 5;   # [
+B6 := 6;   # ]
+
+fn Interpreter do
+    # eq function
+    fn Eq do
+        (L, R) := x0;
+        D1 := L - R;
+        D2 := R - L;
+        D := D1 + D2;
+
+        x0 := 1;
+        while D /= 0 do
+            D := 0;
+            x0 := 0;
+        od
+    od
+
+    # map num into range [0; 256[
+    fn Wrap do
+        _255 := 255;
+        _256 := 256;
+
+        x1 := x0 - _255;
+        while x1 /= 0 do
+            x0 := x0 - _256;
+            x1 := x1 - _256;
+        od
+    od
+
+    # (left, (head, right)) -> (left, (head + 1, right))
+    fn TapeInc do
+        (L, HR) := x0;
+        (H, R) := HR;
+
+        _1 := 1;
+        H := H + _1;
+        H := Wrap(H);
+
+        HR := (H, R);
+        x0 := (L, HR);
+    od
+
+    # (left, (head, right)) -> (left, (head - 1, right))
+    fn TapeDec do
+        (L, HR) := x0;
+        (H, R) := HR;
+
+        _255 := 255;
+        H := H + _255;
+        H := Wrap(H);
+
+        HR := (H, R);
+        x0 := (L, HR);
+    od
+
+    # (left, (head, right)) -> head
+    fn TapeRead do
+        (L, HR) := x0;
+        (x0, R) := HR;
+    od
+
+    # (left, (head, right)) -> ((head, left), right)
+    fn TapeLeft do
+        (L, HR) := x0;
+        (H, R) := HR;
+        HL := (H, L);
+        x0 := (HL, R);
+    od
+
+    # (left, (head, right)) -> (left.1, (left.0, (head, right)))
+    fn TapeRight do
+        (L, HR) := x0;
+        (L0, L1) := L;
+        x1 := (L0, HR);
+        x0 := (L1, x1);
+    od
+
+    # reverse
+    Prog := 0;
+    while x0 /= 0 do
+        (Inst, x0) := x0;
+        Prog := (Inst, Prog);
+    od
+
+    # evaluate
+    Tape := 0;
+    Stack := 0;
+
+    while Prog /= 0 do
+        (Inst, Prog) := Prog;
+
+        _t := (Inst, B1); Flag := Eq(_t); for Flag do Tape := TapeInc   (Tape) od
+        _t := (Inst, B2); Flag := Eq(_t); for Flag do Tape := TapeDec   (Tape) od
+        _t := (Inst, B3); Flag := Eq(_t); for Flag do Tape := TapeLeft  (Tape) od
+        _t := (Inst, B4); Flag := Eq(_t); for Flag do Tape := TapeRight (Tape) od
+
+        _t := (Inst, B5); Flag := Eq(_t); for Flag do
+            _prog := (Inst, Prog);
+            Stack := (_prog, Stack);
+        od
+
+        _t := (Inst, B6); Flag := Eq(_t); for Flag do
+            (_prog, Stack) := Stack;
+
+            Cell := TapeRead(Tape);
+            while Cell /= 0 do
+                Cell := 0;
+
+                Prog := _prog;
+            od
+        od
+    od
+
+    # serialize
+    (Tail, x0) := Tape;
+    while Tail /= 0 do
+        (Head, Tail) := Tail;
+        x0 := (Head, x0);
+    od
+od
+
+
+####################################################################
+
+
+{  +  } Prog := (B1, Prog);
+{  +  } Prog := (B1, Prog);
+{  +  } Prog := (B1, Prog);
+{  <  } Prog := (B4, Prog);
+{  <  } Prog := (B4, Prog);
+{  +  } Prog := (B1, Prog);
+{  +  } Prog := (B1, Prog);
+{  >  } Prog := (B3, Prog);
+{  +  } Prog := (B1, Prog);
+{  >  } Prog := (B3, Prog);
+{  >  } Prog := (B3, Prog);
+
+{  +  } Prog := (B1, Prog);
+{  +  } Prog := (B1, Prog);
+{  +  } Prog := (B1, Prog);
+{  +  } Prog := (B1, Prog);
+{  +  } Prog := (B1, Prog);
+{  [  } Prog := (B5, Prog);
+{  >  } Prog := (B3, Prog);
+{  +  } Prog := (B1, Prog);
+{  +  } Prog := (B1, Prog);
+{  <  } Prog := (B4, Prog);
+{  -  } Prog := (B2, Prog);
+{  ]  } Prog := (B6, Prog);
+
+Tape := Interpreter (Prog);

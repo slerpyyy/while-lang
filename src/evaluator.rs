@@ -145,8 +145,6 @@ impl<'prog> Evaluator<'prog> {
             println!("    {} => {}", key, value);
         }
         println!("}}\n");
-
-        println!("{}", &self.stack.len());
     }
 }
 
