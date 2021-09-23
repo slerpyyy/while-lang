@@ -219,6 +219,12 @@ impl Prog {
                             lut.get(left).into_iter().for_each(|x| *left = x.clone());
                             lut.get(right).into_iter().for_each(|x| *right = x.clone());
                         },
+                        Inst::Set { value: ValueV2::Prog(prog), .. } => {
+                            // TODO: Fix this
+                            if BigUint::try_from(prog.clone()).is_err() {
+                                translate(&mut prog.inst, lut, next, scan_only)
+                            }
+                        },
                         Inst::Set { .. } => (),
                         Inst::Copy { source, .. } |
                         Inst::Split { source, .. } => {

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, convert::{TryFrom, TryInto}};
+use std::{collections::HashMap, convert::{TryFrom, TryInto}};
 
 use num_bigint::BigUint;
 use num_traits::Zero;
@@ -6,22 +6,24 @@ use num_traits::Zero;
 use crate::*;
 
 #[derive(Debug)]
-pub struct Frame<'prog> {
-    pub work: Vec<Cow<'prog, Inst>>,
+pub struct Frame {
+    pub work: Vec<Inst>,
     pub state: HashMap<IndexV2, ValueV2>,
     pub target: Option<IndexV2>,
 }
 
-pub struct Evaluator<'prog> {
-    pub stack: Vec<Frame<'prog>>,
-    pub base: Frame<'prog>,
+pub struct Evaluator {
+    pub stack: Vec<Frame>,
+    pub base: Frame,
     pub position: usize,
 }
 
-impl<'prog> Evaluator<'prog> {
+impl Evaluator {
     #[must_use]
-    pub fn new(prog: &'prog Prog) -> Self {
-        let work = prog.inst.iter().rev().map(Cow::Borrowed).collect();
+    pub fn new(prog: Prog) -> Self {
+        let mut work = prog.inst;
+        work.reverse();
+
         let base = Frame { work, state: HashMap::new(), target: None };
         Self { stack: Vec::new(), base, position: 0 }
     }
@@ -29,8 +31,8 @@ impl<'prog> Evaluator<'prog> {
     pub fn step(&mut self) -> bool {
         let inst = loop {
             if let Some(inst) = self.base.work.pop() {
-                if let Inst::CodePoint(k) = inst.as_ref() {
-                    self.position = *k;
+                if let Inst::CodePoint(k) = inst {
+                    self.position = k;
                     continue;
                 }
 
@@ -49,17 +51,16 @@ impl<'prog> Evaluator<'prog> {
             }
         };
 
-        match inst.as_ref() {
+        match inst {
             Inst::Add { target, left, right } => {
-                let left: BigUint = self.base.state.get(&left).cloned().unwrap_or_default().try_into().unwrap();
-                let right: BigUint = self.base.state.get(&right).cloned().unwrap_or_default().try_into().unwrap();
-                self.base.state.insert(target.clone(), ValueV2::Int(left + right));
+                let left = self.base.state.get(&left).cloned().unwrap_or_default();
+                let right = self.base.state.get(&right).cloned().unwrap_or_default();
+                self.base.state.insert(target.clone(), left + right);
             }
             Inst::Sub { target, left, right } => {
-                let left: BigUint = self.base.state.get(&left).cloned().unwrap_or_default().try_into().unwrap();
-                let right: BigUint = self.base.state.get(&right).cloned().unwrap_or_default().try_into().unwrap();
-                let value = if right < left { left - right } else { 0_u8.into() };
-                self.base.state.insert(target.clone(), ValueV2::Int(value));
+                let left = self.base.state.get(&left).cloned().unwrap_or_default();
+                let right = self.base.state.get(&right).cloned().unwrap_or_default();
+                self.base.state.insert(target.clone(), left - right);
             }
             Inst::Set { target, value } => {
                 self.base.state.insert(target.clone(), value.clone());
@@ -81,20 +82,21 @@ impl<'prog> Evaluator<'prog> {
                 self.base.state.insert(left.clone(), left_value);
                 self.base.state.insert(right.clone(), right_value);
             }
-            Inst::Block { inner } => {
-                self.base.work.extend(inner.clone().into_iter().rev().map(Cow::Owned));
+            Inst::Block { mut inner } => {
+                inner.reverse();
+                self.base.work.extend(inner);
             }
             Inst::While { ref cond, ref inner } => {
                 if self.base.state.get(cond).filter(|n| !n.is_zero()).is_some() {
-                    self.base.work.push(inst.to_owned());
-                    self.base.work.extend(inner.clone().into_iter().rev().map(Cow::Owned));
+                    self.base.work.push(inst.clone());
+                    self.base.work.extend(inner.iter().rev().cloned());
                 }
             }
-            Inst::For { num, inner } => {
+            Inst::For { num, ref inner } => {
                 if let Some(num) = self.base.state.get(&num).cloned() {
                     let mut num = BigUint::try_from(num).unwrap();
                     while !num.is_zero() {
-                        self.base.work.extend(inner.clone().into_iter().rev().map(Cow::Owned));
+                        self.base.work.extend(inner.iter().rev().cloned());
                         num -= 1_u8;
                     }
                 }
@@ -104,7 +106,8 @@ impl<'prog> Evaluator<'prog> {
                 let input = self.base.state.get(&input).cloned().unwrap_or_default();
 
                 let sub_routine: Prog = function.try_into().unwrap();
-                let work = sub_routine.inst.into_iter().rev().map(Cow::Owned).collect();
+                let mut work = sub_routine.inst;
+                work.reverse();
 
                 let mut state = self.base.state.clone();
                 let x0 = IndexV2::Int(0_u8.into());
@@ -163,7 +166,7 @@ mod test {
             ] },
         ] };
 
-        let mut eval = Evaluator::new(&prog);
+        let mut eval = Evaluator::new(prog);
         eval.run();
 
         assert_eq!(eval.base.state[&0_u8.into()], 9_u8.into());
@@ -183,7 +186,7 @@ mod test {
         ] };
 
         let prog = prog.for_to_while();
-        let mut eval = Evaluator::new(&prog);
+        let mut eval = Evaluator::new(prog);
         eval.run();
 
         assert_eq!(eval.base.state[&0_u8.into()], 9_u8.into());

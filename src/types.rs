@@ -76,11 +76,49 @@ impl ValueV2 {
     }
 }
 
+impl std::ops::Add for ValueV2 {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        if self.is_zero() {
+            return rhs;
+        }
+
+        if rhs.is_zero() {
+            return self;
+        }
+
+        let left: BigUint = self.try_into().unwrap();
+        let right: BigUint = rhs.try_into().unwrap();
+        Self::Int(left + right)
+    }
+}
+
+impl std::ops::Sub for ValueV2 {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        if rhs.is_zero() {
+            return self;
+        }
+
+        let left: BigUint = self.try_into().unwrap();
+        let right: BigUint = rhs.try_into().unwrap();
+
+        if left <= right {
+            return 0_u8.into();
+        }
+
+        Self::Int(left - right)
+    }
+}
+
 impl fmt::Display for ValueV2 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match BigUint::try_from(self.clone()) {
-            Ok(num) => write!(f, "{}", num),
-            _ => write!(f, "??"),
+        match self {
+            ValueV2::Int(num) => write!(f, "{}", num),
+            ValueV2::Tuple(left, right) => write!(f, "({}, {})", left, right),
+            ValueV2::Prog(_) => write!(f, "<fn def>"),
         }
     }
 }

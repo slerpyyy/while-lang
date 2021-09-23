@@ -1,3 +1,5 @@
+use std::{io::Read, sync::{Arc, Condvar, Mutex}, time::{Duration, Instant}};
+
 use clap::{AppSettings, Clap};
 use codespan_reporting::{files::SimpleFiles, term::{self, termcolor::{ColorChoice, StandardStream}}};
 use while_lang::{Evaluator, compile};
@@ -55,8 +57,68 @@ fn main() {
                 }
             };
 
-            let mut ev = Evaluator::new(&prog);
-            ev.run();
+            #[derive(Clone)]
+            struct Stats {
+                done: bool,
+                total_insts: u64,
+                epoch_insts: u64,
+            }
+
+            let mut ev = Evaluator::new(prog);
+            let stats_handle = Arc::new((Mutex::new(None), Condvar::new()));
+
+            let worker = {
+                let stats_handle = Arc::clone(&stats_handle);
+                std::thread::spawn(move || {
+                    let mut epoch = Instant::now();
+                    let mut total_insts: u64 = 0;
+                    let mut epoch_insts: u64 = 0;
+
+                    loop {
+                        let done = !ev.step();
+                        epoch_insts += 1;
+
+                        if done || epoch.elapsed() > Duration::from_secs(1) {
+                            epoch = Instant::now();
+                            total_insts += epoch_insts;
+
+                            let (stats, cvar) = &*stats_handle;
+                            *stats.lock().unwrap() = Some(Stats {
+                                done, total_insts, epoch_insts
+                            });
+
+                            cvar.notify_all();
+                            epoch_insts = 0;
+                        }
+
+                        if done {
+                            break ev;
+                        }
+                    }
+                })
+            };
+
+            let start = Instant::now();
+            let (stats, cvar) = &*stats_handle;
+            let mut guard = stats.lock().unwrap();
+
+            loop {
+                let stats = match guard.take() {
+                    Some(s) => s,
+                    None => {
+                        guard = cvar.wait(guard).unwrap();
+                        continue;
+                    },
+                };
+
+                println!("..running, time {:?}, total {}, per-epoch: {}", start.elapsed(), stats.total_insts, stats.epoch_insts);
+
+                if stats.done {
+                    break;
+                }
+            }
+
+            let ev = worker.join().unwrap();
 
             println!("{{");
             for (key, value) in ev.base.state.into_iter() {
@@ -76,11 +138,14 @@ fn main() {
                 }
             };
 
-            let mut ev = Evaluator::new(&prog);
+            let mut ev = Evaluator::new(prog);
+            let mut stdin = std::io::stdin();
+
             while ev.step() {
                 let _ = std::process::Command::new("cmd.exe").arg("/c").arg("cls").status();
                 ev.debug_print(&code, 7);
-                let _ = std::process::Command::new("cmd.exe").arg("/c").arg("pause").status();
+
+                stdin.read(&mut [0u8; 4]).unwrap();
             }
 
             let _ = std::process::Command::new("cmd.exe").arg("/c").arg("cls").status();
