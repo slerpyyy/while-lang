@@ -519,7 +519,14 @@ impl fmt::Display for Prog {
                     }
                     Inst::Set { target, value } => {
                         fmt_indent(f, indent)?;
-                        writeln!(f, "{} := {};", target, value)?;
+                        if let ValueV2::Prog(prog) = value {
+                            writeln!(f, "fn {} do", target)?;
+                            fmt_recurse(f, &prog.inst, indent + 1)?;
+                            fmt_indent(f, indent)?;
+                            writeln!(f, "od")?;
+                        } else {
+                            writeln!(f, "{} := {};", target, value)?;
+                        }
                     }
                     Inst::Copy { target, source } => {
                         fmt_indent(f, indent)?;
