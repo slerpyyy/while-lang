@@ -1,10 +1,20 @@
-use std::{io::Read, sync::{Arc, Condvar, Mutex}, time::{Duration, Instant}};
+use std::{
+    io::Read,
+    sync::{Arc, Condvar, Mutex},
+    time::{Duration, Instant},
+};
 
 use clap::{AppSettings, Clap};
-use codespan_reporting::{files::SimpleFiles, term::{self, termcolor::{ColorChoice, StandardStream}}};
-use while_lang::{Evaluator, compile};
+use codespan_reporting::{
+    files::SimpleFiles,
+    term::{
+        self,
+        termcolor::{ColorChoice, StandardStream},
+    },
+};
+use while_lang::{compile, Evaluator};
 
-#[derive(Clap)]
+#[derive(Clap, Debug, Clone)]
 #[clap(setting = AppSettings::ColoredHelp)]
 #[clap(setting = AppSettings::SubcommandRequiredElseHelp)]
 struct Args {
@@ -12,20 +22,12 @@ struct Args {
     subcmd: SubCommand,
 }
 
-#[derive(Clap)]
+#[derive(Clap, Debug, Clone)]
 enum SubCommand {
-    Check {
-        input_file: String
-    },
-    Run {
-        input_file: String
-    },
-    Debug {
-        input_file: String
-    },
-    Rewrite {
-        input_file: String
-    },
+    Check { input_file: String },
+    Run { input_file: String },
+    Debug { input_file: String },
+    Rewrite { input_file: String },
 }
 
 fn main() {
@@ -35,20 +37,24 @@ fn main() {
     let writer = StandardStream::stderr(ColorChoice::Always);
     let config = codespan_reporting::term::Config::default();
 
-    match args.subcmd {
-        SubCommand::Check { input_file } => {
-            let code = std::fs::read_to_string(&input_file).unwrap();
-            let file_id = files.add(&input_file, &code);
+    let input_file = match args.subcmd.clone() {
+        SubCommand::Check { input_file } => input_file,
+        SubCommand::Run { input_file } => input_file,
+        SubCommand::Debug { input_file } => input_file,
+        SubCommand::Rewrite { input_file } => input_file,
+    };
 
+    let code = std::fs::read_to_string(&input_file).unwrap();
+    let file_id = files.add(&input_file, &code);
+
+    match args.subcmd {
+        SubCommand::Check { .. } => {
             if let Err(error) = compile(&code, file_id) {
                 term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
                 return;
             }
         }
-        SubCommand::Run { input_file } => {
-            let code = std::fs::read_to_string(&input_file).unwrap();
-            let file_id = files.add(&input_file, &code);
-
+        SubCommand::Run { .. } => {
             let prog = match compile(&code, file_id) {
                 Ok(s) => s,
                 Err(error) => {
@@ -62,6 +68,7 @@ fn main() {
                 done: bool,
                 total_insts: u64,
                 epoch_insts: u64,
+                epoch_len: Duration,
             }
 
             let mut ev = Evaluator::new(prog);
@@ -78,13 +85,17 @@ fn main() {
                         let done = !ev.step();
                         epoch_insts += 1;
 
-                        if done || epoch.elapsed() > Duration::from_secs(1) {
+                        let epoch_len = epoch.elapsed();
+                        if done || epoch_len > Duration::from_secs(1) {
                             epoch = Instant::now();
                             total_insts += epoch_insts;
 
                             let (stats, cvar) = &*stats_handle;
                             *stats.lock().unwrap() = Some(Stats {
-                                done, total_insts, epoch_insts
+                                done,
+                                total_insts,
+                                epoch_insts,
+                                epoch_len,
                             });
 
                             cvar.notify_all();
@@ -108,10 +119,16 @@ fn main() {
                     None => {
                         guard = cvar.wait(guard).unwrap();
                         continue;
-                    },
+                    }
                 };
 
-                println!("..running, time {:?}, total {}, per-epoch: {}", start.elapsed(), stats.total_insts, stats.epoch_insts);
+                let elapsed = start.elapsed();
+                println!(
+                    "..running, time {:?}, total {}, rate {:.3}#/s",
+                    elapsed,
+                    stats.total_insts,
+                    stats.epoch_insts as f64 / stats.epoch_len.as_secs_f64()
+                );
 
                 if stats.done {
                     break;
@@ -122,14 +139,15 @@ fn main() {
 
             println!("{{");
             for (key, value) in ev.base.state.into_iter() {
+                if value.is_zero() {
+                    continue;
+                }
+
                 println!("    {} => {}", key, value);
             }
             println!("}}");
         }
-        SubCommand::Debug { input_file } => {
-            let code = std::fs::read_to_string(&input_file).unwrap();
-            let file_id = files.add(&input_file, &code);
-
+        SubCommand::Debug { .. } => {
             let prog = match compile(&code, file_id) {
                 Ok(s) => s,
                 Err(error) => {
@@ -142,23 +160,30 @@ fn main() {
             let mut stdin = std::io::stdin();
 
             while ev.step() {
-                let _ = std::process::Command::new("cmd.exe").arg("/c").arg("cls").status();
+                let _ = std::process::Command::new("cmd.exe")
+                    .arg("/c")
+                    .arg("cls")
+                    .status();
                 ev.debug_print(&code, 7);
 
                 stdin.read(&mut [0u8; 4]).unwrap();
             }
 
-            let _ = std::process::Command::new("cmd.exe").arg("/c").arg("cls").status();
+            let _ = std::process::Command::new("cmd.exe")
+                .arg("/c")
+                .arg("cls")
+                .status();
             println!("{{");
             for (key, value) in ev.base.state.into_iter() {
+                if value.is_zero() {
+                    continue;
+                }
+
                 println!("    {} => {}", key, value);
             }
             println!("}}");
         }
-        SubCommand::Rewrite { input_file } => {
-            let code = std::fs::read_to_string(&input_file).unwrap();
-            let file_id = files.add(&input_file, &code);
-
+        SubCommand::Rewrite { .. } => {
             let prog = match compile(&code, file_id) {
                 Ok(s) => s,
                 Err(error) => {
@@ -172,9 +197,10 @@ fn main() {
                 .for_to_while()
                 .unused_sets()
                 .expand_copy()
-                .inline_blocks();
+                .inline_blocks()
+                .unused_sets();
 
             println!("{}", prog);
-        },
+        }
     }
 }

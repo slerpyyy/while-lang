@@ -1,9 +1,12 @@
-use std::{convert::{TryFrom, TryInto}, fmt};
+use std::{
+    convert::{TryFrom, TryInto},
+    fmt,
+};
 
 use num_bigint::BigUint;
 use num_traits::Zero;
 
-use crate::{Inst, Prog, pair, pair_inv};
+use crate::{pair, pair_inv, Inst, Prog};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum IndexV2 {
@@ -70,8 +73,9 @@ impl ValueV2 {
             ValueV2::Int(num) => num.is_zero(),
             ValueV2::Tuple(left, right) => left.is_zero() && right.is_zero(),
             ValueV2::Prog(prog) => {
-                matches!(prog.inst.as_slice(), &[Inst::Add { .. }]) && BigUint::try_from(prog.clone()) == Ok(0_u8.into())
-            },
+                matches!(prog.inst.as_slice(), &[Inst::Add { .. }])
+                    && BigUint::try_from(prog.clone()) == Ok(0_u8.into())
+            }
         }
     }
 }
@@ -139,7 +143,7 @@ impl TryFrom<ValueV2> for BigUint {
                 let left = Self::try_from(*left)?;
                 let right = Self::try_from(*right)?;
                 Ok(pair(left, right))
-            },
+            }
             ValueV2::Prog(prog) => Self::try_from(prog),
         }
     }
@@ -154,7 +158,7 @@ impl TryFrom<ValueV2> for Prog {
             v @ ValueV2::Tuple(_, _) => {
                 let num: BigUint = v.try_into()?;
                 num.try_into()
-            },
+            }
             ValueV2::Prog(prog) => Ok(prog),
         }
     }
@@ -168,15 +172,13 @@ impl TryFrom<ValueV2> for (ValueV2, ValueV2) {
             ValueV2::Int(num) => {
                 let (left, right) = pair_inv(num);
                 Ok((ValueV2::Int(left), ValueV2::Int(right)))
-            },
-            ValueV2::Tuple(left, right) => {
-                Ok((*left, *right))
-            },
+            }
+            ValueV2::Tuple(left, right) => Ok((*left, *right)),
             ValueV2::Prog(prog) => {
                 let num: BigUint = prog.try_into()?;
                 let (left, right) = pair_inv(num);
                 Ok((ValueV2::Int(left), ValueV2::Int(right)))
-            },
+            }
         }
     }
 }

@@ -1,8 +1,12 @@
-use std::{collections::HashSet, convert::{TryFrom, TryInto}, unreachable};
-use std::{fmt, collections::HashMap};
 use num_bigint::BigUint;
 use num_integer::Roots;
 use num_traits::{NumOps, Zero};
+use std::{collections::HashMap, fmt};
+use std::{
+    collections::HashSet,
+    convert::{TryFrom, TryInto},
+    unreachable,
+};
 
 use crate::{IndexV2, ValueV2};
 
@@ -74,9 +78,21 @@ impl Prog {
         fn recurse(inst_vec: &[Inst], highest: &mut BigUint) {
             for inst in inst_vec {
                 match inst {
-                    Inst::Add {target, left, right} |
-                    Inst::Sub {target, left, right} |
-                    Inst::Merge { target, left, right } => {
+                    Inst::Add {
+                        target,
+                        left,
+                        right,
+                    }
+                    | Inst::Sub {
+                        target,
+                        left,
+                        right,
+                    }
+                    | Inst::Merge {
+                        target,
+                        left,
+                        right,
+                    } => {
                         check(target, highest);
                         check(left, highest);
                         check(right, highest);
@@ -88,23 +104,31 @@ impl Prog {
                         check(target, highest);
                         check(source, highest);
                     }
-                    Inst::Split { left, right, source } => {
+                    Inst::Split {
+                        left,
+                        right,
+                        source,
+                    } => {
                         check(left, highest);
                         check(right, highest);
                         check(source, highest);
-                    },
+                    }
                     Inst::Block { inner } => {
                         recurse(inner, highest);
                     }
-                    Inst::While {cond, inner} => {
+                    Inst::While { cond, inner } => {
                         check(cond, highest);
                         recurse(inner, highest);
                     }
-                    Inst::For {num, inner} => {
+                    Inst::For { num, inner } => {
                         check(num, highest);
                         recurse(inner, highest);
                     }
-                    Inst::Call {target, function, input} => {
+                    Inst::Call {
+                        target,
+                        function,
+                        input,
+                    } => {
                         check(target, highest);
                         check(function, highest);
                         check(input, highest);
@@ -123,8 +147,8 @@ impl Prog {
     pub fn reindex_vars(mut self) -> Self {
         fn reindex_single(
             var: &mut IndexV2,
-            map: &mut HashMap::<IndexV2, IndexV2>,
-            next_available: &mut BigUint
+            map: &mut HashMap<IndexV2, IndexV2>,
+            next_available: &mut BigUint,
         ) {
             *var = map.get(var).cloned().unwrap_or_else(|| {
                 let new_var = IndexV2::Int(next_available.clone());
@@ -136,14 +160,26 @@ impl Prog {
 
         fn recurse(
             inst_vec: &mut Vec<Inst>,
-            map: &mut HashMap::<IndexV2, IndexV2>,
-            next_available: &mut BigUint
+            map: &mut HashMap<IndexV2, IndexV2>,
+            next_available: &mut BigUint,
         ) {
             for inst in inst_vec {
                 match inst {
-                    Inst::Add { target, left, right } |
-                    Inst::Sub { target, left, right } |
-                    Inst::Merge { target, left, right } => {
+                    Inst::Add {
+                        target,
+                        left,
+                        right,
+                    }
+                    | Inst::Sub {
+                        target,
+                        left,
+                        right,
+                    }
+                    | Inst::Merge {
+                        target,
+                        left,
+                        right,
+                    } => {
                         reindex_single(target, map, next_available);
                         reindex_single(left, map, next_available);
                         reindex_single(right, map, next_available);
@@ -155,7 +191,11 @@ impl Prog {
                         reindex_single(target, map, next_available);
                         reindex_single(source, map, next_available);
                     }
-                    Inst::Split { left, right, source } => {
+                    Inst::Split {
+                        left,
+                        right,
+                        source,
+                    } => {
                         reindex_single(left, map, next_available);
                         reindex_single(right, map, next_available);
                         reindex_single(source, map, next_available);
@@ -171,7 +211,11 @@ impl Prog {
                         reindex_single(num, map, next_available);
                         recurse(inner, map, next_available);
                     }
-                    Inst::Call { target, function, input } => {
+                    Inst::Call {
+                        target,
+                        function,
+                        input,
+                    } => {
                         reindex_single(target, map, next_available);
                         reindex_single(function, map, next_available);
                         reindex_single(input, map, next_available);
@@ -191,16 +235,25 @@ impl Prog {
     #[must_use]
     pub fn inline_blocks(mut self) -> Self {
         fn recurse(inst_vec: Vec<Inst>) -> Vec<Inst> {
-            inst_vec.into_iter().flat_map(|inst| match inst {
-                Inst::Block { inner } => recurse(inner),
-                Inst::While { cond, inner } => {
-                    vec![Inst::While {cond, inner: recurse(inner)}]
-                }
-                Inst::For { num, inner } => {
-                    vec![Inst::For {num, inner: recurse(inner)}]
-                }
-                s => vec![s],
-            }).collect()
+            inst_vec
+                .into_iter()
+                .flat_map(|inst| match inst {
+                    Inst::Block { inner } => recurse(inner),
+                    Inst::While { cond, inner } => {
+                        vec![Inst::While {
+                            cond,
+                            inner: recurse(inner),
+                        }]
+                    }
+                    Inst::For { num, inner } => {
+                        vec![Inst::For {
+                            num,
+                            inner: recurse(inner),
+                        }]
+                    }
+                    s => vec![s],
+                })
+                .collect()
         }
 
         self.inst = recurse(self.inst);
@@ -209,156 +262,138 @@ impl Prog {
 
     #[must_use]
     pub fn inline_functions(mut self) -> Self {
-        fn translate(inst_vec: &mut Vec<Inst>, lut: &mut HashMap<IndexV2, IndexV2>, next: &mut BigUint, scan_only: bool) {
-            for inst in inst_vec.iter_mut() {
-                if !scan_only {
-                    match inst {
-                        Inst::Add { left, right, .. } |
-                        Inst::Sub { left, right, .. } |
-                        Inst::Merge { left, right, .. } => {
-                            lut.get(left).into_iter().for_each(|x| *left = x.clone());
-                            lut.get(right).into_iter().for_each(|x| *right = x.clone());
-                        },
-                        Inst::Set { value: ValueV2::Prog(prog), .. } => {
-                            // TODO: Fix this
-                            if BigUint::try_from(prog.clone()).is_err() {
-                                translate(&mut prog.inst, lut, next, scan_only)
-                            }
-                        },
-                        Inst::Set { .. } => (),
-                        Inst::Copy { source, .. } |
-                        Inst::Split { source, .. } => {
-                            lut.get(source).into_iter().for_each(|x| *source = x.clone());
-                        },
-                        Inst::Call { function, input, .. } => {
-                            lut.get(function).into_iter().for_each(|x| *function = x.clone());
-                            lut.get(input).into_iter().for_each(|x| *input = x.clone());
-                        },
-                        Inst::Block { inner } => {
-                            translate(inner, lut, next, scan_only);
-                        },
-                        Inst::While { cond, inner } => {
-                            lut.get(cond).into_iter().for_each(|x| *cond = x.clone());
-                            translate(inner, lut, next, true);
-                            translate(inner, lut, next, scan_only);
-                        },
-                        Inst::For { num, inner } => {
-                            lut.get(num).into_iter().for_each(|x| *num = x.clone());
-                            translate(inner, lut, next, true);
-                            translate(inner, lut, next, scan_only);
-                        },
-                        Inst::CodePoint(_) => (),
-                    }
-                }
-
+        fn target_index_set(inst_vec: &[Inst]) -> HashSet<IndexV2> {
+            let mut output = HashSet::new();
+            for inst in inst_vec {
                 match inst {
-                    Inst::Add { target, .. } |
-                    Inst::Sub { target, .. } |
-                    Inst::Set { target, .. } |
-                    Inst::Copy { target, .. } |
-                    Inst::Call { target, .. } => {
-                        if !lut.contains_key(target) {
-                            *next += 1_u8;
-                            let new_target = IndexV2::Int(next.clone());
-                            lut.insert(target.clone(), new_target);
-                        }
-
-                        if !scan_only {
-                            lut.get(target).into_iter().for_each(|x| *target = x.clone());
-                        }
-                    },
-                    Inst::Split { left, right, .. } => {
-                        if !lut.contains_key(left) {
-                            *next += 1_u8;
-                            let new_target = IndexV2::Int(next.clone());
-                            lut.insert(left.clone(), new_target);
-                        }
-
-                        if !lut.contains_key(right) {
-                            *next += 1_u8;
-                            let new_target = IndexV2::Int(next.clone());
-                            lut.insert(right.clone(), new_target);
-                        }
-
-                        if !scan_only {
-                            lut.get(left).into_iter().for_each(|x| *left = x.clone());
-                            lut.get(right).into_iter().for_each(|x| *right = x.clone());
+                    Inst::Add { target, .. }
+                    | Inst::Sub { target, .. }
+                    | Inst::Set { target, .. }
+                    | Inst::Copy { target, .. }
+                    | Inst::Call { target, .. }
+                    | Inst::Merge { target, .. } => {
+                        if !output.contains(target) {
+                            output.insert(target.clone());
                         }
                     }
-                    _ => (),
+
+                    Inst::Split { left, right, .. } => {
+                        if !output.contains(left) {
+                            output.insert(left.clone());
+                        }
+
+                        if !output.contains(right) {
+                            output.insert(right.clone());
+                        }
+                    }
+
+                    Inst::Block { inner } | Inst::While { inner, .. } | Inst::For { inner, .. } => {
+                        output.extend(target_index_set(&inner))
+                    }
+
+                    Inst::CodePoint(_) => (),
                 }
             }
+
+            output
         }
 
-        fn recurse(inst_vec: &mut Vec<Inst>, funs: &mut HashMap<IndexV2, ValueV2>, next: &mut BigUint) {
+        fn recurse(
+            inst_vec: &mut Vec<Inst>,
+            funs: &mut HashMap<IndexV2, ValueV2>,
+            next: &mut BigUint,
+        ) {
             for inst in inst_vec.iter_mut() {
                 match inst {
-                    Inst::Add { target, .. } |
-                    Inst::Sub { target, .. } => {
+                    Inst::Add { target, .. } | Inst::Sub { target, .. } => {
                         funs.remove(target);
-                    },
+                    }
 
                     Inst::Set { target, value } => {
                         funs.insert(target.clone(), value.clone());
-                    },
+                    }
 
                     Inst::Copy { target, source } => {
                         match funs.get(source).cloned() {
                             Some(value) => funs.insert(target.clone(), value),
                             None => funs.remove(target),
                         };
-                    },
+                    }
 
                     // TODO: Make this smarter
                     Inst::Merge { target, .. } => {
                         funs.remove(target);
-                    },
+                    }
 
                     // TODO: Make this smarter
                     Inst::Split { left, right, .. } => {
                         funs.remove(left);
                         funs.remove(right);
-                    },
+                    }
 
-                    Inst::Call { target, function, input } => {
+                    Inst::Call {
+                        target,
+                        function,
+                        input,
+                    } => {
                         funs.remove(target);
 
-                        let mut expand = Vec::new();
-                        if input != target {
-                            expand.push(Inst::Copy { target: target.clone(), source: input.clone() });
+                        let fun_def = funs.get(function).cloned().and_then(|v| v.try_into().ok());
+                        let fun_def = match fun_def {
+                            Some(Prog { inst, .. }) => inst,
+                            _ => continue,
+                        };
+
+                        let x0: IndexV2 = 0_u8.into();
+                        let mut backup_push = Vec::new();
+                        let mut backup_pop = Vec::new();
+
+                        if target != &x0 {
+                            backup_pop.push(Inst::Copy {
+                                target: target.clone(),
+                                source: x0.clone(),
+                            });
                         }
 
-                        let fun_def: Prog = funs.get(function).unwrap().clone().try_into().unwrap();
-                        let mut fun_inst_vec = fun_def.inst;
+                        for index in target_index_set(&fun_def) {
+                            *next += 1_u8;
+                            let backup = IndexV2::Int(next.clone());
+                            backup_push.push(Inst::Copy {
+                                target: backup.clone(),
+                                source: index.clone(),
+                            });
 
-                        let mut lut = HashMap::new();
-                        lut.insert(0_u8.into(), target.clone());
+                            if &index != target {
+                                backup_pop.push(Inst::Copy {
+                                    target: index,
+                                    source: backup,
+                                });
+                            }
+                        }
 
-                        translate(&mut fun_inst_vec, &mut lut, next, false);
-                        expand.push(Inst::Block { inner: fun_inst_vec });
+                        if input != &x0 {
+                            backup_push.push(Inst::Copy {
+                                target: x0.clone(),
+                                source: input.clone(),
+                            });
+                        }
+
+                        let mut expand = backup_push;
+                        expand.extend(fun_def);
+                        expand.extend(backup_pop);
 
                         recurse(&mut expand, funs, next);
 
                         *inst = Inst::Block { inner: expand };
                     }
 
-                    Inst::Block { inner } |
-                    Inst::While { inner, .. } |
-                    Inst::For { inner, .. } => {
-                        for inner_inst in inner.iter() {
-                            match inner_inst {
-                                Inst::Add { target, .. } |
-                                Inst::Sub { target, .. } |
-                                Inst::Set { target, .. } |
-                                Inst::Call { target, .. } => {
-                                    funs.remove(target);
-                                },
-                                _ => (),
-                            }
+                    Inst::Block { inner } | Inst::While { inner, .. } | Inst::For { inner, .. } => {
+                        for target in target_index_set(inner) {
+                            funs.remove(&target);
                         }
 
                         recurse(inner, funs, next);
-                    },
+                    }
 
                     Inst::CodePoint(_) => (),
                 }
@@ -373,49 +408,78 @@ impl Prog {
 
     #[must_use]
     pub fn unused_sets(mut self) -> Self {
-        fn recurse(inst_vec: &mut Vec<Inst>, alive: &mut HashSet<IndexV2>, scan_only: bool) {
+        fn recurse(inst_vec: &mut Vec<Inst>, alive: &mut HashSet<IndexV2>, no_kill: bool) {
             for inst in inst_vec.iter_mut().rev() {
                 match inst {
-                    Inst::Add { target, left, right } |
-                    Inst::Sub { target, left, right } |
-                    Inst::Merge { target, left, right } => {
-                        alive.remove(target);
+                    Inst::Add {
+                        target,
+                        left,
+                        right,
+                    }
+                    | Inst::Sub {
+                        target,
+                        left,
+                        right,
+                    }
+                    | Inst::Merge {
+                        target,
+                        left,
+                        right,
+                    } => {
+                        if !no_kill {
+                            alive.remove(target);
+                        }
                         alive.insert(left.clone());
                         alive.insert(right.clone());
-                    },
+                    }
                     Inst::Copy { target, source } => {
-                        alive.remove(target);
+                        if !no_kill {
+                            alive.remove(target);
+                        }
                         alive.insert(source.clone());
-                    },
-                    Inst::Split { left, right, source } => {
-                        alive.remove(left);
-                        alive.remove(right);
+                    }
+                    Inst::Split {
+                        left,
+                        right,
+                        source,
+                    } => {
+                        if !no_kill {
+                            alive.remove(left);
+                            alive.remove(right);
+                        }
                         alive.insert(source.clone());
-                    },
-                    Inst::Call { target, function, input } => {
-                        alive.remove(target);
+                    }
+                    Inst::Call {
+                        target,
+                        function,
+                        input,
+                    } => {
+                        if !no_kill {
+                            alive.remove(target);
+                        }
                         alive.insert(function.clone());
                         alive.insert(input.clone());
-                    },
-                    Inst::Block { inner } => recurse(inner, alive, scan_only),
+                    }
+                    Inst::Block { inner } => recurse(inner, alive, no_kill),
                     Inst::While { cond, inner } => {
-                        recurse(inner, alive, true);
-                        recurse(inner, alive, scan_only);
                         alive.insert(cond.clone());
-                    },
-                    Inst::For { num, inner } => {
                         recurse(inner, alive, true);
-                        recurse(inner, alive, scan_only);
+                    }
+                    Inst::For { num, inner } => {
                         alive.insert(num.clone());
-                    },
+                        recurse(inner, alive, true);
+                    }
                     Inst::Set { target, .. } => {
-                        if alive.contains(target) {
-                            alive.remove(target);
-                        } else {
+                        let dead = match no_kill {
+                            true => !alive.contains(target),
+                            false => !alive.remove(target),
+                        };
+
+                        if dead {
                             // Stomp set with noop
                             *inst = Inst::Block { inner: vec![] };
                         }
-                    },
+                    }
                     Inst::CodePoint(_) => (),
                 };
             }
@@ -432,23 +496,31 @@ impl Prog {
             let mut index = 0;
             while index < inst_vec.len() {
                 match inst_vec.get_mut(index) {
-                    Some(Inst::Copy { ref target, ref source }) => {
+                    Some(Inst::Copy {
+                        ref target,
+                        ref source,
+                    }) => {
                         if target == source {
                             inst_vec.remove(index);
                             continue; // skip index increment
                         }
 
-                        let set_inst = Inst::Set { target: target.clone(), value: 0_u8.into() };
-                        let add_inst = Inst::Add { target: target.clone(), left: target.clone(), right: source.clone() };
+                        let set_inst = Inst::Set {
+                            target: target.clone(),
+                            value: 0_u8.into(),
+                        };
+                        let add_inst = Inst::Add {
+                            target: target.clone(),
+                            left: target.clone(),
+                            right: source.clone(),
+                        };
 
                         *inst_vec.get_mut(index).unwrap() = add_inst;
                         inst_vec.insert(index, set_inst);
-                    },
+                    }
 
                     Some(
-                        Inst::Block { inner } |
-                        Inst::While { inner, .. } |
-                        Inst::For { inner, .. }
+                        Inst::Block { inner } | Inst::While { inner, .. } | Inst::For { inner, .. },
                     ) => recurse(inner),
 
                     _ => (),
@@ -467,24 +539,44 @@ impl Prog {
         fn recurse(inst_vec: &mut Vec<Inst>, reserved: &BigUint, next_available: &mut BigUint) {
             for inst in inst_vec {
                 match inst {
-                    Inst::For {num, inner} => {
+                    Inst::For { num, inner } => {
                         recurse(inner, reserved, next_available);
 
                         inner.extend(vec![
-                            Inst::Set {target: IndexV2::Int(reserved.clone()), value: 1_u8.into()},
-                            Inst::Sub {target: IndexV2::Int(next_available.clone()), left: IndexV2::Int(next_available.clone()), right: IndexV2::Int(reserved.clone())},
+                            Inst::Set {
+                                target: IndexV2::Int(reserved.clone()),
+                                value: 1_u8.into(),
+                            },
+                            Inst::Sub {
+                                target: IndexV2::Int(next_available.clone()),
+                                left: IndexV2::Int(next_available.clone()),
+                                right: IndexV2::Int(reserved.clone()),
+                            },
                         ]);
 
-                        *inst = Inst::Block {inner: vec![
-                            Inst::Set {target: IndexV2::Int(reserved.clone()), value: 0_u8.into()},
-                            Inst::Add {target: IndexV2::Int(next_available.clone()), left: num.clone(), right: IndexV2::Int(reserved.clone())},
-                            Inst::While {cond: IndexV2::Int(next_available.clone()), inner: inner.clone()}
-                        ]};
+                        *inst = Inst::Block {
+                            inner: vec![
+                                Inst::Set {
+                                    target: IndexV2::Int(reserved.clone()),
+                                    value: 0_u8.into(),
+                                },
+                                Inst::Add {
+                                    target: IndexV2::Int(next_available.clone()),
+                                    left: num.clone(),
+                                    right: IndexV2::Int(reserved.clone()),
+                                },
+                                Inst::While {
+                                    cond: IndexV2::Int(next_available.clone()),
+                                    inner: inner.clone(),
+                                },
+                            ],
+                        };
 
                         *next_available += 1_u8;
                     }
-                    Inst::Block {inner} |
-                    Inst::While {inner, ..} => recurse(inner, reserved, next_available),
+                    Inst::Block { inner } | Inst::While { inner, .. } => {
+                        recurse(inner, reserved, next_available)
+                    }
                     _ => (),
                 }
             }
@@ -501,7 +593,9 @@ impl fmt::Display for Prog {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[inline]
         fn fmt_indent(f: &mut fmt::Formatter<'_>, indent: u32) -> fmt::Result {
-            for _ in 0..indent { write!(f, "  ")?; }
+            for _ in 0..indent {
+                write!(f, "  ")?;
+            }
             Ok(())
         }
 
@@ -509,11 +603,19 @@ impl fmt::Display for Prog {
         fn fmt_recurse(f: &mut fmt::Formatter<'_>, inst_vec: &[Inst], indent: u32) -> fmt::Result {
             for inst in inst_vec {
                 match inst {
-                    Inst::Add { target, left, right } => {
+                    Inst::Add {
+                        target,
+                        left,
+                        right,
+                    } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "{} := {} + {};", target, left, right)?;
                     }
-                    Inst::Sub { target, left, right } => {
+                    Inst::Sub {
+                        target,
+                        left,
+                        right,
+                    } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "{} := {} - {};", target, left, right)?;
                     }
@@ -532,11 +634,19 @@ impl fmt::Display for Prog {
                         fmt_indent(f, indent)?;
                         writeln!(f, "{} := {};", target, source)?;
                     }
-                    Inst::Merge { target, left, right } => {
+                    Inst::Merge {
+                        target,
+                        left,
+                        right,
+                    } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "{} := ({}, {});", target, left, right)?;
                     }
-                    Inst::Split { left, right, source } => {
+                    Inst::Split {
+                        left,
+                        right,
+                        source,
+                    } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "({}, {}) := {};", left, right, source)?;
                     }
@@ -561,10 +671,14 @@ impl fmt::Display for Prog {
                         fmt_indent(f, indent)?;
                         writeln!(f, "od")?;
                     }
-                    Inst::Call { target, function, input } => {
+                    Inst::Call {
+                        target,
+                        function,
+                        input,
+                    } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "{} := {}({});", target, function, input)?;
-                    },
+                    }
                     Inst::CodePoint(_) => (),
                 }
             }
@@ -578,7 +692,9 @@ impl fmt::Display for Prog {
 #[inline]
 #[must_use]
 pub fn pair<T>(x: T, y: T) -> T
-where T: Clone + From<u8> + NumOps {
+where
+    T: Clone + From<u8> + NumOps,
+{
     let sum: T = x + y.clone();
     let tri: T = sum.clone() * (sum + T::from(1)) / T::from(2);
     tri + y
@@ -587,7 +703,9 @@ where T: Clone + From<u8> + NumOps {
 #[inline]
 #[must_use]
 pub fn pair_inv<T>(z: T) -> (T, T)
-where T: Clone + From<u8> + NumOps + Roots {
+where
+    T: Clone + From<u8> + NumOps + Roots,
+{
     let z_off: T = T::from(8) * z.clone() + T::one();
     let sum: T = (Roots::sqrt(&z_off) - T::one()) / T::from(2);
     let tri: T = sum.clone() * (sum.clone() + T::one()) / T::from(2);
@@ -607,31 +725,49 @@ impl TryFrom<BigUint> for Prog {
                 0..=2 => {
                     let (i, c) = pair_inv(num);
                     if kind == 2 {
-                        Inst::Set { target: i.into(), value: c.into() }
+                        Inst::Set {
+                            target: i.into(),
+                            value: c.into(),
+                        }
                     } else {
                         let (j, k) = pair_inv(c);
                         if kind == 0 {
-                            Inst::Add { target: i.into(), left: j.into(), right: k.into() }
+                            Inst::Add {
+                                target: i.into(),
+                                left: j.into(),
+                                right: k.into(),
+                            }
                         } else {
-                            Inst::Sub { target: i.into(), left: j.into(), right: k.into() }
+                            Inst::Sub {
+                                target: i.into(),
+                                left: j.into(),
+                                right: k.into(),
+                            }
                         }
                     }
-                },
+                }
                 3 => {
                     let (i, p) = pair_inv(num);
-                    Inst::While { cond: i.into(), inner: vec![recurse(p)?] }
-                },
+                    Inst::While {
+                        cond: i.into(),
+                        inner: vec![recurse(p)?],
+                    }
+                }
                 4 => {
                     let (p1, p2) = pair_inv(num);
-                    Inst::Block { inner: vec![recurse(p1)?, recurse(p2)? ] }
-                },
+                    Inst::Block {
+                        inner: vec![recurse(p1)?, recurse(p2)?],
+                    }
+                }
                 _ => unreachable!(),
             };
 
             Ok(inst)
         }
 
-        Ok(Self {inst: vec![recurse(num)?]})
+        Ok(Self {
+            inst: vec![recurse(num)?],
+        })
     }
 }
 
@@ -642,12 +778,20 @@ impl TryFrom<Prog> for BigUint {
         fn recurse(inst_vec: &[Inst]) -> Result<BigUint, ()> {
             let (head, tail) = inst_vec.split_first().ok_or(())?;
             let head = match head {
-                Inst::Add { target, left, right } => {
+                Inst::Add {
+                    target,
+                    left,
+                    right,
+                } => {
                     let num: BigUint = pair(left.clone().try_into()?, right.clone().try_into()?);
                     let num: BigUint = pair(target.clone().try_into()?, num);
                     BigUint::from(5_u8) * num
                 }
-                Inst::Sub { target, left, right } => {
+                Inst::Sub {
+                    target,
+                    left,
+                    right,
+                } => {
                     let num: BigUint = pair(left.clone().try_into()?, right.clone().try_into()?);
                     let num: BigUint = pair(target.clone().try_into()?, num);
                     BigUint::from(5_u8) * num + BigUint::from(1_u8)
@@ -660,15 +804,13 @@ impl TryFrom<Prog> for BigUint {
                     let num: BigUint = pair(cond.clone().try_into()?, recurse(inner)?);
                     BigUint::from(5_u8) * num + BigUint::from(3_u8)
                 }
-                Inst::Block { inner } => {
-                    recurse(inner)?
-                }
+                Inst::Block { inner } => recurse(inner)?,
                 _ => return Err(()),
             };
 
             Ok(match tail {
                 &[] => head,
-                tail => BigUint::from(5_u8) * pair(head, recurse(tail)?) + BigUint::from(4_u8)
+                tail => BigUint::from(5_u8) * pair(head, recurse(tail)?) + BigUint::from(4_u8),
             })
         }
 
@@ -704,20 +846,48 @@ mod test {
 
     #[test]
     fn to_string_simple() {
-        let prog = Prog { inst: vec![
-            Inst::Set { target: 0.into(), value: 8_u8.into() },
-            Inst::Block { inner: vec![
-                Inst::Set { target: 1.into(), value: 16_u8.into() },
-                Inst::Set { target: 2.into(), value: 32_u8.into() },
-            ] },
-            Inst::While { cond: 2.into(), inner: vec![
-                Inst::Add { target: 3.into(), left: 1.into(), right: 3.into() },
-                Inst::Sub { target: 2.into(), left: 2.into(), right: 0.into() },
-                Inst::For { num: 0.into(), inner: vec![
-                    Inst::Set { target: 3.into(), value: 1_u8.into() }
-                ] },
-            ] },
-        ] };
+        let prog = Prog {
+            inst: vec![
+                Inst::Set {
+                    target: 0.into(),
+                    value: 8_u8.into(),
+                },
+                Inst::Block {
+                    inner: vec![
+                        Inst::Set {
+                            target: 1.into(),
+                            value: 16_u8.into(),
+                        },
+                        Inst::Set {
+                            target: 2.into(),
+                            value: 32_u8.into(),
+                        },
+                    ],
+                },
+                Inst::While {
+                    cond: 2.into(),
+                    inner: vec![
+                        Inst::Add {
+                            target: 3.into(),
+                            left: 1.into(),
+                            right: 3.into(),
+                        },
+                        Inst::Sub {
+                            target: 2.into(),
+                            left: 2.into(),
+                            right: 0.into(),
+                        },
+                        Inst::For {
+                            num: 0.into(),
+                            inner: vec![Inst::Set {
+                                target: 3.into(),
+                                value: 1_u8.into(),
+                            }],
+                        },
+                    ],
+                },
+            ],
+        };
 
         let actual = prog.to_string();
         let expected = "\
@@ -740,20 +910,48 @@ od
 
     #[test]
     fn highest_index_reindex_simple() {
-        let prog = Prog { inst: vec![
-            Inst::Set { target: 8_u8.into(), value: 8_u8.into() },
-            Inst::Block { inner: vec![
-                Inst::Set { target: 5_u8.into(), value: 16_u8.into() },
-                Inst::Set { target: 2_u8.into(), value: 32_u8.into() },
-            ] },
-            Inst::While { cond: 2_u8.into(), inner: vec![
-                Inst::Add { target: 5_u8.into(), left: 5_u8.into(), right: 8_u8.into() },
-                Inst::Sub { target: 2_u8.into(), left: 2_u8.into(), right: 0_u8.into() },
-                Inst::For { num: 0_u8.into(), inner: vec![
-                    Inst::Set { target: 7_u8.into(), value: 1_u8.into() }
-                ] },
-            ] },
-        ] };
+        let prog = Prog {
+            inst: vec![
+                Inst::Set {
+                    target: 8_u8.into(),
+                    value: 8_u8.into(),
+                },
+                Inst::Block {
+                    inner: vec![
+                        Inst::Set {
+                            target: 5_u8.into(),
+                            value: 16_u8.into(),
+                        },
+                        Inst::Set {
+                            target: 2_u8.into(),
+                            value: 32_u8.into(),
+                        },
+                    ],
+                },
+                Inst::While {
+                    cond: 2_u8.into(),
+                    inner: vec![
+                        Inst::Add {
+                            target: 5_u8.into(),
+                            left: 5_u8.into(),
+                            right: 8_u8.into(),
+                        },
+                        Inst::Sub {
+                            target: 2_u8.into(),
+                            left: 2_u8.into(),
+                            right: 0_u8.into(),
+                        },
+                        Inst::For {
+                            num: 0_u8.into(),
+                            inner: vec![Inst::Set {
+                                target: 7_u8.into(),
+                                value: 1_u8.into(),
+                            }],
+                        },
+                    ],
+                },
+            ],
+        };
 
         assert_eq!(prog.highest_index(), 8_u8.into());
 
@@ -763,14 +961,25 @@ od
 
     #[test]
     fn translate_while_simple() {
-        let prog = Prog { inst: vec![
-            Inst::For { num: 2_u8.into(), inner: vec![
-                Inst::Add { target: 5_u8.into(), left: 5_u8.into(), right: 8_u8.into() },
-                Inst::For { num: 0_u8.into(), inner: vec![
-                    Inst::Set { target: 7_u8.into(), value: 1_u8.into() }
-                ] },
-            ] },
-        ] };
+        let prog = Prog {
+            inst: vec![Inst::For {
+                num: 2_u8.into(),
+                inner: vec![
+                    Inst::Add {
+                        target: 5_u8.into(),
+                        left: 5_u8.into(),
+                        right: 8_u8.into(),
+                    },
+                    Inst::For {
+                        num: 0_u8.into(),
+                        inner: vec![Inst::Set {
+                            target: 7_u8.into(),
+                            value: 1_u8.into(),
+                        }],
+                    },
+                ],
+            }],
+        };
         println!("{}", prog);
 
         let prog = prog.for_to_while();
@@ -799,13 +1008,17 @@ od
 
     #[test]
     fn from_big_int_huge() {
-        let num = BigUint::parse_bytes(b"\
+        let num = BigUint::parse_bytes(
+            b"\
 6918533271165862244800453842255214768368549267336031513389449453398\
 0092400299925515080206483860328907198635248416013381235319140639272\
 6897754342224678926067874361569070021552220521388010615008170881095\
 6243268016923493158803722982452545915649955777420013923183320489359\
 8918915193172285526551142584434955736640059829711203281957250872373\
-1400892288209387853483996163716217775929", 10).unwrap();
+1400892288209387853483996163716217775929",
+            10,
+        )
+        .unwrap();
         let prog: Prog = num.try_into().unwrap();
 
         let result = prog.inline_blocks().to_string();
@@ -827,10 +1040,8 @@ od
 
     #[test]
     fn from_into_consistency() {
-        let expected = BigUint::parse_bytes(
-            b"6353471964769560710236650382363524229281885364863",
-            10,
-        ).unwrap();
+        let expected =
+            BigUint::parse_bytes(b"6353471964769560710236650382363524229281885364863", 10).unwrap();
 
         let num = &expected;
         let prog = Prog::try_from(num.clone()).unwrap();

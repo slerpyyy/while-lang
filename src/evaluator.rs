@@ -1,4 +1,7 @@
-use std::{collections::HashMap, convert::{TryFrom, TryInto}};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+};
 
 use num_bigint::BigUint;
 use num_traits::Zero;
@@ -24,8 +27,16 @@ impl Evaluator {
         let mut work = prog.inst;
         work.reverse();
 
-        let base = Frame { work, state: HashMap::new(), target: None };
-        Self { stack: Vec::new(), base, position: 0 }
+        let base = Frame {
+            work,
+            state: HashMap::new(),
+            target: None,
+        };
+        Self {
+            stack: Vec::new(),
+            base,
+            position: 0,
+        }
     }
 
     pub fn step(&mut self) -> bool {
@@ -36,7 +47,7 @@ impl Evaluator {
                     continue;
                 }
 
-                break inst
+                break inst;
             } else {
                 return if let Some(target) = self.base.target.take() {
                     let x0 = IndexV2::Int(0_u8.into());
@@ -47,17 +58,25 @@ impl Evaluator {
                     true
                 } else {
                     false
-                }
+                };
             }
         };
 
         match inst {
-            Inst::Add { target, left, right } => {
+            Inst::Add {
+                target,
+                left,
+                right,
+            } => {
                 let left = self.base.state.get(&left).cloned().unwrap_or_default();
                 let right = self.base.state.get(&right).cloned().unwrap_or_default();
                 self.base.state.insert(target.clone(), left + right);
             }
-            Inst::Sub { target, left, right } => {
+            Inst::Sub {
+                target,
+                left,
+                right,
+            } => {
                 let left = self.base.state.get(&left).cloned().unwrap_or_default();
                 let right = self.base.state.get(&right).cloned().unwrap_or_default();
                 self.base.state.insert(target.clone(), left - right);
@@ -69,14 +88,22 @@ impl Evaluator {
                 let value = self.base.state.get(&source).cloned().unwrap_or_default();
                 self.base.state.insert(target.clone(), value);
             }
-            Inst::Merge { target, left, right } => {
+            Inst::Merge {
+                target,
+                left,
+                right,
+            } => {
                 let tuple = ValueV2::Tuple(
                     Box::new(self.base.state.get(&left).cloned().unwrap_or_default()),
                     Box::new(self.base.state.get(&right).cloned().unwrap_or_default()),
                 );
                 self.base.state.insert(target.clone(), tuple);
             }
-            Inst::Split { left, right, source } => {
+            Inst::Split {
+                left,
+                right,
+                source,
+            } => {
                 let value = self.base.state.get(&source).cloned().unwrap_or_default();
                 let (left_value, right_value) = value.try_into().unwrap();
                 self.base.state.insert(left.clone(), left_value);
@@ -86,7 +113,10 @@ impl Evaluator {
                 inner.reverse();
                 self.base.work.extend(inner);
             }
-            Inst::While { ref cond, ref inner } => {
+            Inst::While {
+                ref cond,
+                ref inner,
+            } => {
                 if self.base.state.get(cond).filter(|n| !n.is_zero()).is_some() {
                     self.base.work.push(inst.clone());
                     self.base.work.extend(inner.iter().rev().cloned());
@@ -101,7 +131,11 @@ impl Evaluator {
                     }
                 }
             }
-            Inst::Call { target, function, input } => {
+            Inst::Call {
+                target,
+                function,
+                input,
+            } => {
                 let function = self.base.state.get(&function).cloned().unwrap_or_default();
                 let input = self.base.state.get(&input).cloned().unwrap_or_default();
 
@@ -114,12 +148,14 @@ impl Evaluator {
                 state.insert(x0, input);
 
                 let frame = Frame {
-                    state, work, target: Some(target.clone())
+                    state,
+                    work,
+                    target: Some(target.clone()),
                 };
 
                 self.stack.push(frame);
                 std::mem::swap(&mut self.base, self.stack.last_mut().unwrap());
-            },
+            }
             Inst::CodePoint(_) => unreachable!(),
         }
 
@@ -131,11 +167,14 @@ impl Evaluator {
     }
 
     pub fn debug_print(&self, code: &str, context: usize) {
-        let curr_ln = code[..self.position].chars().filter(|&ch| ch == '\n').count();
+        let curr_ln = code[..self.position]
+            .chars()
+            .filter(|&ch| ch == '\n')
+            .count();
         let first_ln = curr_ln.saturating_sub(context / 2);
 
         println!("\nCode Point:");
-        for (k , line) in code.lines().enumerate().skip(first_ln).take(context) {
+        for (k, line) in code.lines().enumerate().skip(first_ln).take(context) {
             let sep = match k == curr_ln {
                 true => '>',
                 false => '|',
@@ -157,14 +196,33 @@ mod test {
 
     #[test]
     fn simple_for_program() {
-        let prog = Prog { inst: vec![
-            Inst::Set { target: 1_u8.into(), value: 2_u8.into() },
-            Inst::Set { target: 2_u8.into(), value: 3_u8.into() },
-            Inst::For { num: 2_u8.into(), inner: vec![
-                Inst::Add { target: 0_u8.into(), left: 0_u8.into(), right: 2_u8.into() },
-                Inst::Sub { target: 1_u8.into(), left: 0_u8.into(), right: 1_u8.into() },
-            ] },
-        ] };
+        let prog = Prog {
+            inst: vec![
+                Inst::Set {
+                    target: 1_u8.into(),
+                    value: 2_u8.into(),
+                },
+                Inst::Set {
+                    target: 2_u8.into(),
+                    value: 3_u8.into(),
+                },
+                Inst::For {
+                    num: 2_u8.into(),
+                    inner: vec![
+                        Inst::Add {
+                            target: 0_u8.into(),
+                            left: 0_u8.into(),
+                            right: 2_u8.into(),
+                        },
+                        Inst::Sub {
+                            target: 1_u8.into(),
+                            left: 0_u8.into(),
+                            right: 1_u8.into(),
+                        },
+                    ],
+                },
+            ],
+        };
 
         let mut eval = Evaluator::new(prog);
         eval.run();
@@ -176,14 +234,33 @@ mod test {
 
     #[test]
     fn simple_while_program() {
-        let prog = Prog { inst: vec![
-            Inst::Set { target: 1_u8.into(), value: 2_u8.into() },
-            Inst::Set { target: 2_u8.into(), value: 3_u8.into() },
-            Inst::For { num: 2_u8.into(), inner: vec![
-                Inst::Add { target: 0_u8.into(), left: 0_u8.into(), right: 2_u8.into() },
-                Inst::Sub { target: 1_u8.into(), left: 0_u8.into(), right: 1_u8.into() },
-            ] },
-        ] };
+        let prog = Prog {
+            inst: vec![
+                Inst::Set {
+                    target: 1_u8.into(),
+                    value: 2_u8.into(),
+                },
+                Inst::Set {
+                    target: 2_u8.into(),
+                    value: 3_u8.into(),
+                },
+                Inst::For {
+                    num: 2_u8.into(),
+                    inner: vec![
+                        Inst::Add {
+                            target: 0_u8.into(),
+                            left: 0_u8.into(),
+                            right: 2_u8.into(),
+                        },
+                        Inst::Sub {
+                            target: 1_u8.into(),
+                            left: 0_u8.into(),
+                            right: 1_u8.into(),
+                        },
+                    ],
+                },
+            ],
+        };
 
         let prog = prog.for_to_while();
         let mut eval = Evaluator::new(prog);

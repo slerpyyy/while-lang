@@ -1,0 +1,21 @@
+fn Fibonacci do
+    _1 := 1;
+
+    x1 := x0 - _1;
+    x2 := x1 - _1;
+    x0 := 1;
+
+    while x1 /= 0 do
+        x0 := Fibonacci(x1);
+        x1 := 0;
+    od
+
+    while x2 /= 0 do
+        x2 := Fibonacci(x2);
+        x0 := x0 + x2;
+        x2 := 0;
+    od
+od
+
+x1 := 12;
+x0 := Fibonacci(x1);
