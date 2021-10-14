@@ -336,55 +336,70 @@ impl Prog {
                         function,
                         input,
                     } => {
-                        funs.remove(target);
+                        // remove definition to prevent infinite recursion
+                        let fun_def = funs.remove_entry(function);
+                        let fun_inst = fun_def
+                            .as_ref()
+                            .and_then(|(_, v)| v.clone().try_into().ok())
+                            .map(|Prog { inst, .. }| inst);
 
-                        let fun_def = funs.get(function).cloned().and_then(|v| v.try_into().ok());
-                        let fun_def = match fun_def {
-                            Some(Prog { inst, .. }) => inst,
-                            _ => continue,
-                        };
+                        if let Some(fun_inst) = fun_inst {
+                            let mut backup_push = Vec::new();
+                            let mut backup_pop = Vec::new();
+                            let x0: IndexV2 = 0_u8.into();
 
-                        let x0: IndexV2 = 0_u8.into();
-                        let mut backup_push = Vec::new();
-                        let mut backup_pop = Vec::new();
-
-                        if target != &x0 {
-                            backup_pop.push(Inst::Copy {
-                                target: target.clone(),
-                                source: x0.clone(),
-                            });
-                        }
-
-                        for index in target_index_set(&fun_def) {
-                            *next += 1_u8;
-                            let backup = IndexV2::Int(next.clone());
-                            backup_push.push(Inst::Copy {
-                                target: backup.clone(),
-                                source: index.clone(),
-                            });
-
-                            if &index != target {
+                            // move result from x0 to target
+                            if target != &x0 {
                                 backup_pop.push(Inst::Copy {
-                                    target: index,
-                                    source: backup,
+                                    target: target.clone(),
+                                    source: x0.clone(),
                                 });
                             }
+
+                            // store and load overwritten variables
+                            for index in target_index_set(&fun_inst) {
+                                *next += 1_u8;
+                                let backup = IndexV2::Int(next.clone());
+                                backup_push.push(Inst::Copy {
+                                    target: backup.clone(),
+                                    source: index.clone(),
+                                });
+
+                                if &index != target {
+                                    backup_pop.push(Inst::Copy {
+                                        target: index,
+                                        source: backup,
+                                    });
+                                }
+                            }
+
+                            // move argument from input to x0
+                            if input != &x0 {
+                                backup_push.push(Inst::Copy {
+                                    target: x0.clone(),
+                                    source: input.clone(),
+                                });
+                            }
+
+                            let mut expand = backup_push;
+                            expand.extend(fun_inst);
+                            expand.extend(backup_pop);
+
+                            // recurse over the entire expansion
+                            recurse(&mut expand, funs, next);
+
+                            // stomp call with expansion
+                            *inst = Inst::Block { inner: expand };
+                        } else {
+                            // function is opaque, we cannot assume anything
+                            // about the result of the function
+                            funs.remove(target);
+                        };
+
+                        // restore function definition
+                        if let Some((key, value)) = fun_def {
+                            funs.insert(key, value);
                         }
-
-                        if input != &x0 {
-                            backup_push.push(Inst::Copy {
-                                target: x0.clone(),
-                                source: input.clone(),
-                            });
-                        }
-
-                        let mut expand = backup_push;
-                        expand.extend(fun_def);
-                        expand.extend(backup_pop);
-
-                        recurse(&mut expand, funs, next);
-
-                        *inst = Inst::Block { inner: expand };
                     }
 
                     Inst::Block { inner } | Inst::While { inner, .. } | Inst::For { inner, .. } => {
