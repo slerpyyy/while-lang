@@ -194,11 +194,11 @@ fn main() {
 
             let prog = prog
                 .inline_functions()
+                .shortcut_tuples()
                 .for_to_while()
-                .unused_sets()
+                .remove_unused()
                 .expand_copy()
-                .inline_blocks()
-                .unused_sets();
+                .inline_blocks();
 
             println!("{}", prog);
         }

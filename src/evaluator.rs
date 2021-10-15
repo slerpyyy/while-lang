@@ -90,7 +90,7 @@ impl Evaluator {
                 *count -= 1_u8;
                 self.base.work.push(rep_inst);
                 inst
-            },
+            }
         };
 
         match inst {
@@ -141,7 +141,9 @@ impl Evaluator {
                 self.base.state.insert(right.clone(), right_value);
             }
             Inst::Block { inner } => {
-                self.base.work.extend(inner.into_iter().rev().map(Repeat::Once));
+                self.base
+                    .work
+                    .extend(inner.into_iter().rev().map(Repeat::Once));
             }
             Inst::While {
                 ref cond,
@@ -149,7 +151,9 @@ impl Evaluator {
             } => {
                 if self.base.state.get(cond).filter(|n| !n.is_zero()).is_some() {
                     self.base.work.push(Repeat::Once(inst.clone()));
-                    self.base.work.extend(inner.iter().rev().cloned().map(Repeat::Once));
+                    self.base
+                        .work
+                        .extend(inner.iter().rev().cloned().map(Repeat::Once));
                 }
             }
             Inst::For { num, inner } => {
@@ -158,11 +162,15 @@ impl Evaluator {
 
                     if num < BigUint::from(4_u8) {
                         while !num.is_zero() {
-                            self.base.work.extend(inner.iter().rev().cloned().map(Repeat::Once));
+                            self.base
+                                .work
+                                .extend(inner.iter().rev().cloned().map(Repeat::Once));
                             num -= 1_u8;
                         }
                     } else {
-                        self.base.work.push(Repeat::Many(Inst::Block{inner}, num));
+                        self.base
+                            .work
+                            .push(Repeat::Many(Inst::Block { inner }, num));
                     }
                 }
             }
@@ -175,7 +183,12 @@ impl Evaluator {
                 let input = self.base.state.get(&input).cloned().unwrap_or_default();
 
                 let sub_routine: Prog = function.try_into().unwrap();
-                let work = sub_routine.inst.into_iter().rev().map(Repeat::Once).collect();
+                let work = sub_routine
+                    .inst
+                    .into_iter()
+                    .rev()
+                    .map(Repeat::Once)
+                    .collect();
 
                 let mut state = self.base.state.clone();
                 let x0 = IndexV2::Int(0_u8.into());

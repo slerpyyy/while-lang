@@ -155,3 +155,4 @@ od
 {  ]  } Prog := (B6, Prog);
 
 Tape := Interpreter (Prog);
+x0 := Tape;

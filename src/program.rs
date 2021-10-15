@@ -97,8 +97,11 @@ impl Prog {
                         check(left, highest);
                         check(right, highest);
                     }
-                    Inst::Set { target, .. } => {
+                    Inst::Set { target, value } => {
                         check(target, highest);
+                        if let ValueV2::Prog(Prog { inst }) = value {
+                            recurse(inst, highest)
+                        }
                     }
                     Inst::Copy { target, source } => {
                         check(target, highest);
@@ -422,7 +425,7 @@ impl Prog {
     }
 
     #[must_use]
-    pub fn unused_sets(mut self) -> Self {
+    pub fn remove_unused(mut self) -> Self {
         fn recurse(inst_vec: &mut Vec<Inst>, alive: &mut HashSet<IndexV2>, no_kill: bool) {
             for inst in inst_vec.iter_mut().rev() {
                 match inst {
@@ -435,23 +438,12 @@ impl Prog {
                         target,
                         left,
                         right,
-                    }
-                    | Inst::Merge {
-                        target,
-                        left,
-                        right,
                     } => {
                         if !no_kill {
                             alive.remove(target);
                         }
                         alive.insert(left.clone());
                         alive.insert(right.clone());
-                    }
-                    Inst::Copy { target, source } => {
-                        if !no_kill {
-                            alive.remove(target);
-                        }
-                        alive.insert(source.clone());
                     }
                     Inst::Split {
                         left,
@@ -495,13 +487,161 @@ impl Prog {
                             *inst = Inst::Block { inner: vec![] };
                         }
                     }
+                    Inst::Copy { target, source } => {
+                        let dead = match no_kill {
+                            true => !alive.contains(target),
+                            false => !alive.remove(target),
+                        };
+
+                        if dead {
+                            // Stomp set with noop
+                            *inst = Inst::Block { inner: vec![] };
+                        } else {
+                            alive.insert(source.clone());
+                        }
+                    }
+                    Inst::Merge {
+                        target,
+                        left,
+                        right,
+                    } => {
+                        let dead = match no_kill {
+                            true => !alive.contains(target),
+                            false => !alive.remove(target),
+                        };
+
+                        if dead {
+                            // Stomp set with noop
+                            *inst = Inst::Block { inner: vec![] };
+                        } else {
+                            alive.insert(left.clone());
+                            alive.insert(right.clone());
+                        }
+                    }
                     Inst::CodePoint(_) => (),
                 };
             }
         }
 
         let mut alive = HashSet::new();
+        alive.insert(0_u8.into());
+
         recurse(&mut self.inst, &mut alive, false);
+        self
+    }
+
+    #[must_use]
+    pub fn shortcut_tuples(mut self) -> Self {
+        fn recurse(
+            inst_vec: &mut Vec<Inst>,
+            lut: &mut HashMap<IndexV2, (IndexV2, IndexV2)>,
+            highest: &mut BigUint,
+            do_replace: bool,
+        ) {
+            for inst in inst_vec.iter_mut() {
+                match inst {
+                    Inst::Add {
+                        target,
+                        left,
+                        right,
+                    }
+                    | Inst::Sub {
+                        target,
+                        left,
+                        right,
+                    } => {
+                        lut.remove(target);
+                        lut.remove(left);
+                        lut.remove(right);
+                    }
+                    Inst::Copy { target, source } => {
+                        lut.remove(target);
+                        lut.remove(source);
+                    }
+                    Inst::Call {
+                        target,
+                        function,
+                        input,
+                    } => {
+                        lut.remove(target);
+                        lut.remove(function);
+                        lut.remove(input);
+                    }
+                    Inst::Block { inner } => {
+                        recurse(inner, lut, highest, do_replace);
+                    }
+                    Inst::While { cond, inner } => {
+                        lut.remove(cond);
+                        recurse(inner, lut, highest, true);
+                        recurse(inner, lut, highest, do_replace);
+                    }
+                    Inst::For { num, inner } => {
+                        lut.remove(num);
+                        recurse(inner, lut, highest, true);
+                        recurse(inner, lut, highest, do_replace);
+                    }
+                    Inst::Set { target, .. } => {
+                        lut.remove(target);
+                    }
+
+                    Inst::Merge {
+                        target,
+                        ref left,
+                        ref right,
+                    } => {
+                        *highest += 1_u8;
+                        let left_target: IndexV2 = highest.clone().into();
+
+                        *highest += 1_u8;
+                        let right_target: IndexV2 = highest.clone().into();
+
+                        lut.insert(target.clone(), (left_target.clone(), right_target.clone()));
+
+                        let repacement = Inst::Block {
+                            inner: vec![
+                                inst.clone(),
+                                Inst::Copy {
+                                    target: left_target,
+                                    source: left.clone(),
+                                },
+                                Inst::Copy {
+                                    target: right_target,
+                                    source: right.clone(),
+                                },
+                            ],
+                        };
+
+                        *inst = repacement;
+                    }
+
+                    Inst::Split {
+                        left,
+                        right,
+                        source,
+                    } => {
+                        if let Some((left_source, right_source)) = lut.get(source) {
+                            *inst = Inst::Block {
+                                inner: vec![
+                                    Inst::Copy {
+                                        target: left.clone(),
+                                        source: left_source.clone(),
+                                    },
+                                    Inst::Copy {
+                                        target: right.clone(),
+                                        source: right_source.clone(),
+                                    },
+                                ],
+                            };
+                        }
+                    }
+
+                    Inst::CodePoint(_) => (),
+                };
+            }
+        }
+
+        let mut highest = self.highest_index();
+        recurse(&mut self.inst, &mut HashMap::new(), &mut highest, false);
         self
     }
 
