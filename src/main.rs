@@ -15,6 +15,7 @@ use codespan_reporting::{
 use while_lang::{compile, Evaluator};
 
 #[derive(Clap, Debug, Clone)]
+#[clap(version, about)]
 #[clap(setting = AppSettings::ColoredHelp)]
 #[clap(setting = AppSettings::SubcommandRequiredElseHelp)]
 struct Args {
@@ -24,9 +25,13 @@ struct Args {
 
 #[derive(Clap, Debug, Clone)]
 enum SubCommand {
+    #[clap(about = "Check if a given program is well-formed without running it")]
     Check { input_file: String },
+    #[clap(about = "Run a given program")]
     Run { input_file: String },
+    #[clap(about = "Evaluate a program one instruction at a time")]
     Debug { input_file: String },
+    #[clap(about = "Translate a program into a pure WHILE program (experimental)")]
     Rewrite { input_file: String },
 }
 

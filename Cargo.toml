@@ -1,7 +1,7 @@
 [package]
 name = "while-lang"
 version = "0.1.0"
-authors = ["Aaron Bies <48803074+slerpyyy@users.noreply.github.com>"]
+description = "An interpreter for the WHILE programming language"
 edition = "2018"
 
 [dependencies]
