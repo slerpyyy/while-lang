@@ -63,11 +63,6 @@ impl Evaluator {
                     }
                 }
 
-                if let Inst::CodePoint(k) = rep_inst.get() {
-                    self.position = *k;
-                    continue;
-                }
-
                 break rep_inst;
             } else {
                 return if let Some(target) = self.base.target.take() {
@@ -93,11 +88,14 @@ impl Evaluator {
             }
         };
 
+        self.position = inst.span().start;
+
         match inst {
             Inst::Add {
                 target,
                 left,
                 right,
+                ..
             } => {
                 let left = self.base.state.get(&left).cloned().unwrap_or_default();
                 let right = self.base.state.get(&right).cloned().unwrap_or_default();
@@ -107,15 +105,16 @@ impl Evaluator {
                 target,
                 left,
                 right,
+                ..
             } => {
                 let left = self.base.state.get(&left).cloned().unwrap_or_default();
                 let right = self.base.state.get(&right).cloned().unwrap_or_default();
                 self.base.state.insert(target.clone(), left - right);
             }
-            Inst::Set { target, value } => {
+            Inst::Set { target, value, .. } => {
                 self.base.state.insert(target.clone(), value.clone());
             }
-            Inst::Copy { target, source } => {
+            Inst::Copy { target, source, .. } => {
                 let value = self.base.state.get(&source).cloned().unwrap_or_default();
                 self.base.state.insert(target.clone(), value);
             }
@@ -123,6 +122,7 @@ impl Evaluator {
                 target,
                 left,
                 right,
+                ..
             } => {
                 let tuple = ValueV2::Tuple(
                     Box::new(self.base.state.get(&left).cloned().unwrap_or_default()),
@@ -134,13 +134,14 @@ impl Evaluator {
                 left,
                 right,
                 source,
+                ..
             } => {
                 let value = self.base.state.get(&source).cloned().unwrap_or_default();
                 let (left_value, right_value) = value.try_into().unwrap();
                 self.base.state.insert(left.clone(), left_value);
                 self.base.state.insert(right.clone(), right_value);
             }
-            Inst::Block { inner } => {
+            Inst::Block { inner, .. } => {
                 self.base
                     .work
                     .extend(inner.into_iter().rev().map(Repeat::Once));
@@ -148,6 +149,7 @@ impl Evaluator {
             Inst::While {
                 ref cond,
                 ref inner,
+                ..
             } => {
                 if self.base.state.get(cond).filter(|n| !n.is_zero()).is_some() {
                     self.base.work.push(Repeat::Once(inst.clone()));
@@ -156,7 +158,7 @@ impl Evaluator {
                         .extend(inner.iter().rev().cloned().map(Repeat::Once));
                 }
             }
-            Inst::For { num, inner } => {
+            Inst::For { num, inner, span } => {
                 if let Some(num) = self.base.state.get(&num).cloned() {
                     let mut num = BigUint::try_from(num).unwrap();
 
@@ -170,7 +172,7 @@ impl Evaluator {
                     } else {
                         self.base
                             .work
-                            .push(Repeat::Many(Inst::Block { inner }, num));
+                            .push(Repeat::Many(Inst::Block { inner, span }, num));
                     }
                 }
             }
@@ -178,6 +180,7 @@ impl Evaluator {
                 target,
                 function,
                 input,
+                ..
             } => {
                 let function = self.base.state.get(&function).cloned().unwrap_or_default();
                 let input = self.base.state.get(&input).cloned().unwrap_or_default();
@@ -203,7 +206,6 @@ impl Evaluator {
                 self.stack.push(frame);
                 std::mem::swap(&mut self.base, self.stack.last_mut().unwrap());
             }
-            Inst::CodePoint(_) => unreachable!(),
         }
 
         true
@@ -248,10 +250,12 @@ mod test {
                 Inst::Set {
                     target: 1_u8.into(),
                     value: 2_u8.into(),
+                    span: 0..0,
                 },
                 Inst::Set {
                     target: 2_u8.into(),
                     value: 3_u8.into(),
+                    span: 0..0,
                 },
                 Inst::For {
                     num: 2_u8.into(),
@@ -260,13 +264,16 @@ mod test {
                             target: 0_u8.into(),
                             left: 0_u8.into(),
                             right: 2_u8.into(),
+                            span: 0..0,
                         },
                         Inst::Sub {
                             target: 1_u8.into(),
                             left: 0_u8.into(),
                             right: 1_u8.into(),
+                            span: 0..0,
                         },
                     ],
+                    span: 0..0,
                 },
             ],
         };
@@ -286,10 +293,12 @@ mod test {
                 Inst::Set {
                     target: 1_u8.into(),
                     value: 2_u8.into(),
+                    span: 0..0,
                 },
                 Inst::Set {
                     target: 2_u8.into(),
                     value: 3_u8.into(),
+                    span: 0..0,
                 },
                 Inst::For {
                     num: 2_u8.into(),
@@ -298,13 +307,16 @@ mod test {
                             target: 0_u8.into(),
                             left: 0_u8.into(),
                             right: 2_u8.into(),
+                            span: 0..0,
                         },
                         Inst::Sub {
                             target: 1_u8.into(),
                             left: 0_u8.into(),
                             right: 1_u8.into(),
+                            span: 0..0,
                         },
                     ],
+                    span: 0..0,
                 },
             ],
         };

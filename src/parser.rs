@@ -87,9 +87,6 @@ fn parse_recursive(
 
     let mut out = Vec::new();
     while let Some(token) = tokens.peek() {
-        #[cfg(not(test))]
-        out.push(Inst::CodePoint(token.span.start));
-
         match token.kind.clone() {
             TokenKind::Var(target) => {
                 let var = tokens.next().unwrap();
@@ -112,9 +109,13 @@ fn parse_recursive(
                     match diag_unwarp(tokens.next(), file_id, var.span.start..eq_token.span.end)? {
                         Token {
                             kind: TokenKind::Const(value),
-                            ..
+                            span,
                         } => {
-                            out.push(Inst::Set { target, value });
+                            out.push(Inst::Set {
+                                target,
+                                value,
+                                span: var.span.start..span.end,
+                            });
                             continue;
                         }
                         t
@@ -123,11 +124,12 @@ fn parse_recursive(
                             kind: TokenKind::LeftParen,
                             ..
                         } => {
-                            let (left, right, _) = parse_tuple(&mut tokens, t)?;
+                            let (left, right, tuple_span) = parse_tuple(&mut tokens, t)?;
                             out.push(Inst::Merge {
                                 target,
                                 left,
                                 right,
+                                span: var.span.start..tuple_span.end,
                             });
                             continue;
                         }
@@ -154,13 +156,13 @@ fn parse_recursive(
                     }) => {
                         let op = tokens.next().unwrap();
 
-                        let right =
+                        let (right, right_span) =
                             match diag_unwarp(tokens.next(), file_id, var.span.start..op.span.end)?
                             {
                                 Token {
                                     kind: TokenKind::Var(var),
-                                    ..
-                                } => var,
+                                    span,
+                                } => (var, span),
                                 t => {
                                     return Err(Diagnostic::error()
                                         .with_message(
@@ -177,16 +179,19 @@ fn parse_recursive(
                                 }
                             };
 
+                        let span = var.span.start..right_span.end;
                         match op.kind {
                             TokenKind::Plus => out.push(Inst::Add {
                                 target,
                                 left,
                                 right,
+                                span,
                             }),
                             TokenKind::Minus => out.push(Inst::Sub {
                                 target,
                                 left,
                                 right,
+                                span,
                             }),
                             _ => unreachable!(),
                         }
@@ -201,17 +206,18 @@ fn parse_recursive(
                         out.push(Inst::Copy {
                             target,
                             source: left,
+                            span: var.span.start..left_span.end,
                         });
                         continue;
                     }
                 };
 
-                let input =
+                let (input, input_span) =
                     match diag_unwarp(tokens.next(), file_id, var.span.start..open.span.end)? {
                         Token {
                             kind: TokenKind::Var(var),
-                            ..
-                        } => var,
+                            span,
+                        } => (var, span),
                         t => {
                             return Err(Diagnostic::error()
                                 .with_message("A function must be called with a variable as input")
@@ -226,7 +232,8 @@ fn parse_recursive(
                         }
                     };
 
-                if tokens.next().map(|t| t.kind) != Some(TokenKind::RightParen) {
+                let closing = diag_unwarp(tokens.next(), file_id, var.span.start..input_span.end)?;
+                if closing.kind != TokenKind::RightParen {
                     return Err(Diagnostic::error()
                         .with_message("Left parentheses without a friend")
                         .with_labels(vec![Label::primary(file_id, open.span)]));
@@ -236,6 +243,7 @@ fn parse_recursive(
                     target,
                     function: left,
                     input,
+                    span: var.span.start..closing.span.end,
                 });
             }
 
@@ -258,7 +266,7 @@ fn parse_recursive(
                     }
                 };
 
-                let (source, _) =
+                let (source, source_span) =
                     match diag_unwarp(tokens.next(), file_id, tuple_span.start..eq_span.end)? {
                         Token {
                             kind: TokenKind::Var(var),
@@ -280,6 +288,7 @@ fn parse_recursive(
                     left,
                     right,
                     source,
+                    span: tuple_span.start..source_span.end,
                 });
             }
 
@@ -291,7 +300,8 @@ fn parse_recursive(
                 let open = tokens.next().unwrap();
                 let inner = parse_recursive(&mut tokens, file_id)?;
 
-                if tokens.next().map(|t| t.kind) != Some(TokenKind::RightBracket) {
+                let close = tokens.next();
+                if close.as_ref().map(|t| &t.kind) != Some(&TokenKind::RightBracket) {
                     return Err(Diagnostic::error()
                         .with_message("Left bracket without a friend")
                         .with_labels(vec![
@@ -301,7 +311,11 @@ fn parse_recursive(
                         ]));
                 }
 
-                let block = Inst::Block { inner };
+                let close = close.unwrap();
+                let block = Inst::Block {
+                    inner,
+                    span: open.span.start..close.span.end,
+                };
                 out.push(block);
             }
 
@@ -351,7 +365,11 @@ fn parse_recursive(
                             .with_message("loop body starts here")]));
                 }
 
-                let block = Inst::While { cond, inner };
+                let block = Inst::While {
+                    cond,
+                    inner,
+                    span: while_span.start..open.span.end,
+                };
                 out.push(block);
             }
 
@@ -401,7 +419,11 @@ fn parse_recursive(
                         ]));
                 }
 
-                let block = Inst::For { num, inner };
+                let block = Inst::For {
+                    num,
+                    inner,
+                    span: for_span.start..do_token.span.end,
+                };
                 out.push(block);
             }
 
@@ -454,7 +476,11 @@ fn parse_recursive(
 
                 let sub = Prog { inst };
                 let value = ValueV2::Prog(sub);
-                out.push(Inst::Set { target, value });
+                out.push(Inst::Set {
+                    target,
+                    value,
+                    span: fn_span.start..od_token.span.end,
+                });
             }
 
             TokenKind::RightBracket | TokenKind::Od => break,
@@ -504,6 +530,7 @@ mod test {
         let expected = vec![Inst::Set {
             target: 2_u8.into(),
             value: 5_u8.into(),
+            span: 0..0,
         }];
 
         assert_eq!(result, expected);
@@ -525,6 +552,7 @@ mod test {
             target: 2_u8.into(),
             function: 3_u8.into(),
             input: 4_u8.into(),
+            span: 0..0,
         }];
 
         assert_eq!(result, expected);
@@ -554,18 +582,22 @@ mod test {
             Inst::Set {
                 target: 0_u8.into(),
                 value: 8_u8.into(),
+                span: 0..0,
             },
             Inst::Block {
                 inner: vec![
                     Inst::Set {
                         target: 1_u8.into(),
                         value: 16_u8.into(),
+                        span: 0..0,
                     },
                     Inst::Set {
                         target: 2_u8.into(),
                         value: 32_u8.into(),
+                        span: 0..0,
                     },
                 ],
+                span: 0..0,
             },
         ];
 
@@ -592,7 +624,9 @@ mod test {
             inner: vec![Inst::Set {
                 target: 2_u8.into(),
                 value: 0_u8.into(),
+                span: 0..0,
             }],
+            span: 0..0,
         }];
 
         assert_eq!(result, expected);
@@ -619,7 +653,9 @@ mod test {
                 target: 2_u8.into(),
                 left: 2_u8.into(),
                 right: 1_u8.into(),
+                span: 0..0,
             }],
+            span: 0..0,
         }];
 
         assert_eq!(result, expected);
@@ -652,11 +688,13 @@ mod test {
                 target: 2_u8.into(),
                 left: 0_u8.into(),
                 right: 1_u8.into(),
+                span: 0..0,
             },
             Inst::Split {
                 left: 0_u8.into(),
                 right: 1_u8.into(),
                 source: 2_u8.into(),
+                span: 0..0,
             },
         ];
 

@@ -1,6 +1,7 @@
 use num_bigint::BigUint;
 use num_integer::Roots;
 use num_traits::{NumOps, Zero};
+use std::ops::Range;
 use std::{collections::HashMap, fmt};
 use std::{
     collections::HashSet,
@@ -16,47 +17,73 @@ pub enum Inst {
         target: IndexV2,
         left: IndexV2,
         right: IndexV2,
+        span: Range<usize>,
     },
     Sub {
         target: IndexV2,
         left: IndexV2,
         right: IndexV2,
+        span: Range<usize>,
     },
     Set {
         target: IndexV2,
         value: ValueV2,
+        span: Range<usize>,
     },
     Copy {
         target: IndexV2,
         source: IndexV2,
+        span: Range<usize>,
     },
     Merge {
         target: IndexV2,
         left: IndexV2,
         right: IndexV2,
+        span: Range<usize>,
     },
     Split {
         left: IndexV2,
         right: IndexV2,
         source: IndexV2,
+        span: Range<usize>,
     },
     Call {
         target: IndexV2,
         function: IndexV2,
         input: IndexV2,
+        span: Range<usize>,
     },
     Block {
         inner: Vec<Self>,
+        span: Range<usize>,
     },
     While {
         cond: IndexV2,
         inner: Vec<Self>,
+        span: Range<usize>,
     },
     For {
         num: IndexV2,
         inner: Vec<Self>,
+        span: Range<usize>,
     },
-    CodePoint(usize),
+}
+
+impl Inst {
+    pub fn span(&self) -> &Range<usize> {
+        match self {
+            Inst::Add { span, .. } => span,
+            Inst::Sub { span, .. } => span,
+            Inst::Set { span, .. } => span,
+            Inst::Copy { span, .. } => span,
+            Inst::Merge { span, .. } => span,
+            Inst::Split { span, .. } => span,
+            Inst::Call { span, .. } => span,
+            Inst::Block { span, .. } => span,
+            Inst::While { span, .. } => span,
+            Inst::For { span, .. } => span,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -82,28 +109,31 @@ impl Prog {
                         target,
                         left,
                         right,
+                        ..
                     }
                     | Inst::Sub {
                         target,
                         left,
                         right,
+                        ..
                     }
                     | Inst::Merge {
                         target,
                         left,
                         right,
+                        ..
                     } => {
                         check(target, highest);
                         check(left, highest);
                         check(right, highest);
                     }
-                    Inst::Set { target, value } => {
+                    Inst::Set { target, value, .. } => {
                         check(target, highest);
                         if let ValueV2::Prog(Prog { inst }) = value {
                             recurse(inst, highest)
                         }
                     }
-                    Inst::Copy { target, source } => {
+                    Inst::Copy { target, source, .. } => {
                         check(target, highest);
                         check(source, highest);
                     }
@@ -111,19 +141,20 @@ impl Prog {
                         left,
                         right,
                         source,
+                        ..
                     } => {
                         check(left, highest);
                         check(right, highest);
                         check(source, highest);
                     }
-                    Inst::Block { inner } => {
+                    Inst::Block { inner, .. } => {
                         recurse(inner, highest);
                     }
-                    Inst::While { cond, inner } => {
+                    Inst::While { cond, inner, .. } => {
                         check(cond, highest);
                         recurse(inner, highest);
                     }
-                    Inst::For { num, inner } => {
+                    Inst::For { num, inner, .. } => {
                         check(num, highest);
                         recurse(inner, highest);
                     }
@@ -131,12 +162,12 @@ impl Prog {
                         target,
                         function,
                         input,
+                        ..
                     } => {
                         check(target, highest);
                         check(function, highest);
                         check(input, highest);
                     }
-                    Inst::CodePoint(_) => (),
                 }
             }
         }
@@ -172,16 +203,19 @@ impl Prog {
                         target,
                         left,
                         right,
+                        ..
                     }
                     | Inst::Sub {
                         target,
                         left,
                         right,
+                        ..
                     }
                     | Inst::Merge {
                         target,
                         left,
                         right,
+                        ..
                     } => {
                         reindex_single(target, map, next_available);
                         reindex_single(left, map, next_available);
@@ -190,7 +224,7 @@ impl Prog {
                     Inst::Set { target, .. } => {
                         reindex_single(target, map, next_available);
                     }
-                    Inst::Copy { target, source } => {
+                    Inst::Copy { target, source, .. } => {
                         reindex_single(target, map, next_available);
                         reindex_single(source, map, next_available);
                     }
@@ -198,19 +232,20 @@ impl Prog {
                         left,
                         right,
                         source,
+                        ..
                     } => {
                         reindex_single(left, map, next_available);
                         reindex_single(right, map, next_available);
                         reindex_single(source, map, next_available);
                     }
-                    Inst::Block { inner } => {
+                    Inst::Block { inner, .. } => {
                         recurse(inner, map, next_available);
                     }
-                    Inst::While { cond, inner } => {
+                    Inst::While { cond, inner, .. } => {
                         reindex_single(cond, map, next_available);
                         recurse(inner, map, next_available);
                     }
-                    Inst::For { num, inner } => {
+                    Inst::For { num, inner, .. } => {
                         reindex_single(num, map, next_available);
                         recurse(inner, map, next_available);
                     }
@@ -218,12 +253,12 @@ impl Prog {
                         target,
                         function,
                         input,
+                        ..
                     } => {
                         reindex_single(target, map, next_available);
                         reindex_single(function, map, next_available);
                         reindex_single(input, map, next_available);
                     }
-                    Inst::CodePoint(_) => (),
                 }
             }
         }
@@ -241,17 +276,19 @@ impl Prog {
             inst_vec
                 .into_iter()
                 .flat_map(|inst| match inst {
-                    Inst::Block { inner } => recurse(inner),
-                    Inst::While { cond, inner } => {
+                    Inst::Block { inner, .. } => recurse(inner),
+                    Inst::While { cond, inner, span } => {
                         vec![Inst::While {
                             cond,
                             inner: recurse(inner),
+                            span,
                         }]
                     }
-                    Inst::For { num, inner } => {
+                    Inst::For { num, inner, span } => {
                         vec![Inst::For {
                             num,
                             inner: recurse(inner),
+                            span,
                         }]
                     }
                     s => vec![s],
@@ -290,11 +327,9 @@ impl Prog {
                         }
                     }
 
-                    Inst::Block { inner } | Inst::While { inner, .. } | Inst::For { inner, .. } => {
-                        output.extend(target_index_set(&inner))
-                    }
-
-                    Inst::CodePoint(_) => (),
+                    Inst::Block { inner, .. }
+                    | Inst::While { inner, .. }
+                    | Inst::For { inner, .. } => output.extend(target_index_set(&inner)),
                 }
             }
 
@@ -312,11 +347,11 @@ impl Prog {
                         funs.remove(target);
                     }
 
-                    Inst::Set { target, value } => {
+                    Inst::Set { target, value, .. } => {
                         funs.insert(target.clone(), value.clone());
                     }
 
-                    Inst::Copy { target, source } => {
+                    Inst::Copy { target, source, .. } => {
                         match funs.get(source).cloned() {
                             Some(value) => funs.insert(target.clone(), value),
                             None => funs.remove(target),
@@ -338,6 +373,7 @@ impl Prog {
                         target,
                         function,
                         input,
+                        span,
                     } => {
                         // remove definition to prevent infinite recursion
                         let fun_def = funs.remove_entry(function);
@@ -356,6 +392,7 @@ impl Prog {
                                 backup_pop.push(Inst::Copy {
                                     target: target.clone(),
                                     source: x0.clone(),
+                                    span: span.clone(),
                                 });
                             }
 
@@ -366,12 +403,14 @@ impl Prog {
                                 backup_push.push(Inst::Copy {
                                     target: backup.clone(),
                                     source: index.clone(),
+                                    span: span.clone(),
                                 });
 
                                 if &index != target {
                                     backup_pop.push(Inst::Copy {
                                         target: index,
                                         source: backup,
+                                        span: span.clone(),
                                     });
                                 }
                             }
@@ -381,6 +420,7 @@ impl Prog {
                                 backup_push.push(Inst::Copy {
                                     target: x0.clone(),
                                     source: input.clone(),
+                                    span: span.clone(),
                                 });
                             }
 
@@ -392,7 +432,10 @@ impl Prog {
                             recurse(&mut expand, funs, next);
 
                             // stomp call with expansion
-                            *inst = Inst::Block { inner: expand };
+                            *inst = Inst::Block {
+                                inner: expand,
+                                span: span.clone(),
+                            };
                         } else {
                             // function is opaque, we cannot assume anything
                             // about the result of the function
@@ -405,15 +448,15 @@ impl Prog {
                         }
                     }
 
-                    Inst::Block { inner } | Inst::While { inner, .. } | Inst::For { inner, .. } => {
+                    Inst::Block { inner, .. }
+                    | Inst::While { inner, .. }
+                    | Inst::For { inner, .. } => {
                         for target in target_index_set(inner) {
                             funs.remove(&target);
                         }
 
                         recurse(inner, funs, next);
                     }
-
-                    Inst::CodePoint(_) => (),
                 }
             }
         }
@@ -433,11 +476,13 @@ impl Prog {
                         target,
                         left,
                         right,
+                        ..
                     }
                     | Inst::Sub {
                         target,
                         left,
                         right,
+                        ..
                     } => {
                         if !no_kill {
                             alive.remove(target);
@@ -449,6 +494,7 @@ impl Prog {
                         left,
                         right,
                         source,
+                        ..
                     } => {
                         if !no_kill {
                             alive.remove(left);
@@ -460,6 +506,7 @@ impl Prog {
                         target,
                         function,
                         input,
+                        ..
                     } => {
                         if !no_kill {
                             alive.remove(target);
@@ -467,16 +514,16 @@ impl Prog {
                         alive.insert(function.clone());
                         alive.insert(input.clone());
                     }
-                    Inst::Block { inner } => recurse(inner, alive, no_kill),
-                    Inst::While { cond, inner } => {
+                    Inst::Block { inner, .. } => recurse(inner, alive, no_kill),
+                    Inst::While { cond, inner, .. } => {
                         alive.insert(cond.clone());
                         recurse(inner, alive, true);
                     }
-                    Inst::For { num, inner } => {
+                    Inst::For { num, inner, .. } => {
                         alive.insert(num.clone());
                         recurse(inner, alive, true);
                     }
-                    Inst::Set { target, .. } => {
+                    Inst::Set { target, span, .. } => {
                         let dead = match no_kill {
                             true => !alive.contains(target),
                             false => !alive.remove(target),
@@ -484,10 +531,17 @@ impl Prog {
 
                         if dead {
                             // Stomp set with noop
-                            *inst = Inst::Block { inner: vec![] };
+                            *inst = Inst::Block {
+                                inner: vec![],
+                                span: span.clone(),
+                            };
                         }
                     }
-                    Inst::Copy { target, source } => {
+                    Inst::Copy {
+                        target,
+                        source,
+                        span,
+                    } => {
                         let dead = match no_kill {
                             true => !alive.contains(target),
                             false => !alive.remove(target),
@@ -495,7 +549,10 @@ impl Prog {
 
                         if dead {
                             // Stomp set with noop
-                            *inst = Inst::Block { inner: vec![] };
+                            *inst = Inst::Block {
+                                inner: vec![],
+                                span: span.clone(),
+                            };
                         } else {
                             alive.insert(source.clone());
                         }
@@ -504,6 +561,7 @@ impl Prog {
                         target,
                         left,
                         right,
+                        span,
                     } => {
                         let dead = match no_kill {
                             true => !alive.contains(target),
@@ -512,13 +570,15 @@ impl Prog {
 
                         if dead {
                             // Stomp set with noop
-                            *inst = Inst::Block { inner: vec![] };
+                            *inst = Inst::Block {
+                                inner: vec![],
+                                span: span.clone(),
+                            };
                         } else {
                             alive.insert(left.clone());
                             alive.insert(right.clone());
                         }
                     }
-                    Inst::CodePoint(_) => (),
                 };
             }
         }
@@ -544,17 +604,19 @@ impl Prog {
                         target,
                         left,
                         right,
+                        ..
                     }
                     | Inst::Sub {
                         target,
                         left,
                         right,
+                        ..
                     } => {
                         lut.remove(target);
                         lut.remove(left);
                         lut.remove(right);
                     }
-                    Inst::Copy { target, source } => {
+                    Inst::Copy { target, source, .. } => {
                         lut.remove(target);
                         lut.remove(source);
                     }
@@ -562,20 +624,21 @@ impl Prog {
                         target,
                         function,
                         input,
+                        ..
                     } => {
                         lut.remove(target);
                         lut.remove(function);
                         lut.remove(input);
                     }
-                    Inst::Block { inner } => {
+                    Inst::Block { inner, .. } => {
                         recurse(inner, lut, highest, do_replace);
                     }
-                    Inst::While { cond, inner } => {
+                    Inst::While { cond, inner, .. } => {
                         lut.remove(cond);
                         recurse(inner, lut, highest, true);
                         recurse(inner, lut, highest, do_replace);
                     }
-                    Inst::For { num, inner } => {
+                    Inst::For { num, inner, .. } => {
                         lut.remove(num);
                         recurse(inner, lut, highest, true);
                         recurse(inner, lut, highest, do_replace);
@@ -588,6 +651,7 @@ impl Prog {
                         target,
                         ref left,
                         ref right,
+                        ref span,
                     } => {
                         *highest += 1_u8;
                         let left_target: IndexV2 = highest.clone().into();
@@ -603,12 +667,15 @@ impl Prog {
                                 Inst::Copy {
                                     target: left_target,
                                     source: left.clone(),
+                                    span: span.clone(),
                                 },
                                 Inst::Copy {
                                     target: right_target,
                                     source: right.clone(),
+                                    span: span.clone(),
                                 },
                             ],
+                            span: span.clone(),
                         };
 
                         *inst = repacement;
@@ -618,6 +685,7 @@ impl Prog {
                         left,
                         right,
                         source,
+                        span,
                     } => {
                         if let Some((left_source, right_source)) = lut.get(source) {
                             *inst = Inst::Block {
@@ -625,17 +693,18 @@ impl Prog {
                                     Inst::Copy {
                                         target: left.clone(),
                                         source: left_source.clone(),
+                                        span: span.clone(),
                                     },
                                     Inst::Copy {
                                         target: right.clone(),
                                         source: right_source.clone(),
+                                        span: span.clone(),
                                     },
                                 ],
+                                span: span.clone(),
                             };
                         }
                     }
-
-                    Inst::CodePoint(_) => (),
                 };
             }
         }
@@ -654,6 +723,7 @@ impl Prog {
                     Some(Inst::Copy {
                         ref target,
                         ref source,
+                        span,
                     }) => {
                         if target == source {
                             inst_vec.remove(index);
@@ -663,11 +733,13 @@ impl Prog {
                         let set_inst = Inst::Set {
                             target: target.clone(),
                             value: 0_u8.into(),
+                            span: span.clone(),
                         };
                         let add_inst = Inst::Add {
                             target: target.clone(),
                             left: target.clone(),
                             right: source.clone(),
+                            span: span.clone(),
                         };
 
                         *inst_vec.get_mut(index).unwrap() = add_inst;
@@ -675,7 +747,9 @@ impl Prog {
                     }
 
                     Some(
-                        Inst::Block { inner } | Inst::While { inner, .. } | Inst::For { inner, .. },
+                        Inst::Block { inner, .. }
+                        | Inst::While { inner, .. }
+                        | Inst::For { inner, .. },
                     ) => recurse(inner),
 
                     _ => (),
@@ -694,18 +768,20 @@ impl Prog {
         fn recurse(inst_vec: &mut Vec<Inst>, reserved: &BigUint, next_available: &mut BigUint) {
             for inst in inst_vec {
                 match inst {
-                    Inst::For { num, inner } => {
+                    Inst::For { num, inner, span } => {
                         recurse(inner, reserved, next_available);
 
                         inner.extend(vec![
                             Inst::Set {
                                 target: IndexV2::Int(reserved.clone()),
                                 value: 1_u8.into(),
+                                span: span.clone(),
                             },
                             Inst::Sub {
                                 target: IndexV2::Int(next_available.clone()),
                                 left: IndexV2::Int(next_available.clone()),
                                 right: IndexV2::Int(reserved.clone()),
+                                span: span.clone(),
                             },
                         ]);
 
@@ -714,22 +790,26 @@ impl Prog {
                                 Inst::Set {
                                     target: IndexV2::Int(reserved.clone()),
                                     value: 0_u8.into(),
+                                    span: span.clone(),
                                 },
                                 Inst::Add {
                                     target: IndexV2::Int(next_available.clone()),
                                     left: num.clone(),
                                     right: IndexV2::Int(reserved.clone()),
+                                    span: span.clone(),
                                 },
                                 Inst::While {
                                     cond: IndexV2::Int(next_available.clone()),
                                     inner: inner.clone(),
+                                    span: span.clone(),
                                 },
                             ],
+                            span: span.clone(),
                         };
 
                         *next_available += 1_u8;
                     }
-                    Inst::Block { inner } | Inst::While { inner, .. } => {
+                    Inst::Block { inner, .. } | Inst::While { inner, .. } => {
                         recurse(inner, reserved, next_available)
                     }
                     _ => (),
@@ -762,6 +842,7 @@ impl fmt::Display for Prog {
                         target,
                         left,
                         right,
+                        ..
                     } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "{} := {} + {};", target, left, right)?;
@@ -770,11 +851,12 @@ impl fmt::Display for Prog {
                         target,
                         left,
                         right,
+                        ..
                     } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "{} := {} - {};", target, left, right)?;
                     }
-                    Inst::Set { target, value } => {
+                    Inst::Set { target, value, .. } => {
                         fmt_indent(f, indent)?;
                         if let ValueV2::Prog(prog) = value {
                             writeln!(f, "fn {} do", target)?;
@@ -785,7 +867,7 @@ impl fmt::Display for Prog {
                             writeln!(f, "{} := {};", target, value)?;
                         }
                     }
-                    Inst::Copy { target, source } => {
+                    Inst::Copy { target, source, .. } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "{} := {};", target, source)?;
                     }
@@ -793,6 +875,7 @@ impl fmt::Display for Prog {
                         target,
                         left,
                         right,
+                        ..
                     } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "{} := ({}, {});", target, left, right)?;
@@ -801,25 +884,26 @@ impl fmt::Display for Prog {
                         left,
                         right,
                         source,
+                        ..
                     } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "({}, {}) := {};", left, right, source)?;
                     }
-                    Inst::Block { inner } => {
+                    Inst::Block { inner, .. } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "[")?;
                         fmt_recurse(f, inner, indent + 1)?;
                         fmt_indent(f, indent)?;
                         writeln!(f, "]")?;
                     }
-                    Inst::While { cond, inner } => {
+                    Inst::While { cond, inner, .. } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "while {} /= 0 do", cond)?;
                         fmt_recurse(f, inner, indent + 1)?;
                         fmt_indent(f, indent)?;
                         writeln!(f, "od")?;
                     }
-                    Inst::For { num, inner } => {
+                    Inst::For { num, inner, .. } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "for {} do", num)?;
                         fmt_recurse(f, inner, indent + 1)?;
@@ -830,11 +914,11 @@ impl fmt::Display for Prog {
                         target,
                         function,
                         input,
+                        ..
                     } => {
                         fmt_indent(f, indent)?;
                         writeln!(f, "{} := {}({});", target, function, input)?;
                     }
-                    Inst::CodePoint(_) => (),
                 }
             }
             Ok(())
@@ -883,6 +967,7 @@ impl TryFrom<BigUint> for Prog {
                         Inst::Set {
                             target: i.into(),
                             value: c.into(),
+                            span: 0..0,
                         }
                     } else {
                         let (j, k) = pair_inv(c);
@@ -891,12 +976,14 @@ impl TryFrom<BigUint> for Prog {
                                 target: i.into(),
                                 left: j.into(),
                                 right: k.into(),
+                                span: 0..0,
                             }
                         } else {
                             Inst::Sub {
                                 target: i.into(),
                                 left: j.into(),
                                 right: k.into(),
+                                span: 0..0,
                             }
                         }
                     }
@@ -906,12 +993,14 @@ impl TryFrom<BigUint> for Prog {
                     Inst::While {
                         cond: i.into(),
                         inner: vec![recurse(p)?],
+                        span: 0..0,
                     }
                 }
                 4 => {
                     let (p1, p2) = pair_inv(num);
                     Inst::Block {
                         inner: vec![recurse(p1)?, recurse(p2)?],
+                        span: 0..0,
                     }
                 }
                 _ => unreachable!(),
@@ -937,6 +1026,7 @@ impl TryFrom<Prog> for BigUint {
                     target,
                     left,
                     right,
+                    ..
                 } => {
                     let num: BigUint = pair(left.clone().try_into()?, right.clone().try_into()?);
                     let num: BigUint = pair(target.clone().try_into()?, num);
@@ -946,20 +1036,21 @@ impl TryFrom<Prog> for BigUint {
                     target,
                     left,
                     right,
+                    ..
                 } => {
                     let num: BigUint = pair(left.clone().try_into()?, right.clone().try_into()?);
                     let num: BigUint = pair(target.clone().try_into()?, num);
                     BigUint::from(5_u8) * num + BigUint::from(1_u8)
                 }
-                Inst::Set { target, value } => {
+                Inst::Set { target, value, .. } => {
                     let num: BigUint = pair(target.clone().try_into()?, value.clone().try_into()?);
                     BigUint::from(5_u8) * num + BigUint::from(2_u8)
                 }
-                Inst::While { cond, inner } => {
+                Inst::While { cond, inner, .. } => {
                     let num: BigUint = pair(cond.clone().try_into()?, recurse(inner)?);
                     BigUint::from(5_u8) * num + BigUint::from(3_u8)
                 }
-                Inst::Block { inner } => recurse(inner)?,
+                Inst::Block { inner, .. } => recurse(inner)?,
                 _ => return Err(()),
             };
 
@@ -1006,18 +1097,22 @@ mod test {
                 Inst::Set {
                     target: 0.into(),
                     value: 8_u8.into(),
+                    span: 0..0,
                 },
                 Inst::Block {
                     inner: vec![
                         Inst::Set {
                             target: 1.into(),
                             value: 16_u8.into(),
+                            span: 0..0,
                         },
                         Inst::Set {
                             target: 2.into(),
                             value: 32_u8.into(),
+                            span: 0..0,
                         },
                     ],
+                    span: 0..0,
                 },
                 Inst::While {
                     cond: 2.into(),
@@ -1026,20 +1121,25 @@ mod test {
                             target: 3.into(),
                             left: 1.into(),
                             right: 3.into(),
+                            span: 0..0,
                         },
                         Inst::Sub {
                             target: 2.into(),
                             left: 2.into(),
                             right: 0.into(),
+                            span: 0..0,
                         },
                         Inst::For {
                             num: 0.into(),
                             inner: vec![Inst::Set {
                                 target: 3.into(),
                                 value: 1_u8.into(),
+                                span: 0..0,
                             }],
+                            span: 0..0,
                         },
                     ],
+                    span: 0..0,
                 },
             ],
         };
@@ -1070,18 +1170,22 @@ od
                 Inst::Set {
                     target: 8_u8.into(),
                     value: 8_u8.into(),
+                    span: 0..0,
                 },
                 Inst::Block {
                     inner: vec![
                         Inst::Set {
                             target: 5_u8.into(),
                             value: 16_u8.into(),
+                            span: 0..0,
                         },
                         Inst::Set {
                             target: 2_u8.into(),
                             value: 32_u8.into(),
+                            span: 0..0,
                         },
                     ],
+                    span: 0..0,
                 },
                 Inst::While {
                     cond: 2_u8.into(),
@@ -1090,20 +1194,25 @@ od
                             target: 5_u8.into(),
                             left: 5_u8.into(),
                             right: 8_u8.into(),
+                            span: 0..0,
                         },
                         Inst::Sub {
                             target: 2_u8.into(),
                             left: 2_u8.into(),
                             right: 0_u8.into(),
+                            span: 0..0,
                         },
                         Inst::For {
                             num: 0_u8.into(),
                             inner: vec![Inst::Set {
                                 target: 7_u8.into(),
                                 value: 1_u8.into(),
+                                span: 0..0,
                             }],
+                            span: 0..0,
                         },
                     ],
+                    span: 0..0,
                 },
             ],
         };
@@ -1124,15 +1233,19 @@ od
                         target: 5_u8.into(),
                         left: 5_u8.into(),
                         right: 8_u8.into(),
+                        span: 0..0,
                     },
                     Inst::For {
                         num: 0_u8.into(),
                         inner: vec![Inst::Set {
                             target: 7_u8.into(),
                             value: 1_u8.into(),
+                            span: 0..0,
                         }],
+                        span: 0..0,
                     },
                 ],
+                span: 0..0,
             }],
         };
         println!("{}", prog);
