@@ -43,46 +43,33 @@ fn main() {
     let config = codespan_reporting::term::Config::default();
 
     let input_file = match args.subcmd.clone() {
-        SubCommand::Check { input_file } => input_file,
-        SubCommand::Run { input_file } => input_file,
-        SubCommand::Debug { input_file } => input_file,
-        SubCommand::Rewrite { input_file } => input_file,
+        SubCommand::Check { input_file }
+        | SubCommand::Run { input_file }
+        | SubCommand::Debug { input_file }
+        | SubCommand::Rewrite { input_file } => input_file,
     };
 
     let code = std::fs::read_to_string(&input_file).unwrap();
     let file_id = files.add(&input_file, &code);
 
-    match args.subcmd {
-        SubCommand::Check { .. } => {
-            let prog = match compile(&code, file_id) {
-                Ok(s) => s,
-                Err(errors) => {
-                    for error in errors {
-                        term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
-                    }
-                    return;
-                }
-            };
-
-            for lint in prog.check_loops(file_id) {
-                term::emit(&mut writer.lock(), &config, &files, &lint).unwrap();
+    let prog = match compile(&code, file_id) {
+        Ok(s) => s,
+        Err(errors) => {
+            for error in errors {
+                term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
             }
+            return;
         }
+    };
+
+    for lint in prog.check_loops(file_id) {
+        term::emit(&mut writer.lock(), &config, &files, &lint).unwrap();
+    }
+
+    match args.subcmd {
+        SubCommand::Check { .. } => (),
+
         SubCommand::Run { .. } => {
-            let prog = match compile(&code, file_id) {
-                Ok(s) => s,
-                Err(errors) => {
-                    for error in errors {
-                        term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
-                    }
-                    return;
-                }
-            };
-
-            for lint in prog.check_loops(file_id) {
-                term::emit(&mut writer.lock(), &config, &files, &lint).unwrap();
-            }
-
             #[derive(Clone)]
             struct Stats {
                 done: bool,
@@ -167,21 +154,8 @@ fn main() {
             }
             println!("}}");
         }
+
         SubCommand::Debug { .. } => {
-            let prog = match compile(&code, file_id) {
-                Ok(s) => s,
-                Err(errors) => {
-                    for error in errors {
-                        term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
-                    }
-                    return;
-                }
-            };
-
-            for lint in prog.check_loops(file_id) {
-                term::emit(&mut writer.lock(), &config, &files, &lint).unwrap();
-            }
-
             let mut ev = Evaluator::new(prog);
             let mut stdin = std::io::stdin();
 
@@ -209,21 +183,8 @@ fn main() {
             }
             println!("}}");
         }
+
         SubCommand::Rewrite { .. } => {
-            let prog = match compile(&code, file_id) {
-                Ok(s) => s,
-                Err(errors) => {
-                    for error in errors {
-                        term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
-                    }
-                    return;
-                }
-            };
-
-            for lint in prog.check_loops(file_id) {
-                term::emit(&mut writer.lock(), &config, &files, &lint).unwrap();
-            }
-
             let prog = prog
                 .inline_functions()
                 .shortcut_tuples()

@@ -310,11 +310,10 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Vec<Diagnostic<usiz
 
             Err(err) => {
                 errors.push(err);
-            },
+            }
 
             _ => (),
         }
-
     }
 
     match errors.is_empty() {
