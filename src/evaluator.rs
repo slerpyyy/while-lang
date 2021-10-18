@@ -14,15 +14,6 @@ enum Repeat<T> {
     Many(T, BigUint),
 }
 
-impl<T> Repeat<T> {
-    fn get(&self) -> &T {
-        match self {
-            Repeat::Once(v) => v,
-            Repeat::Many(v, _) => v,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct Frame {
     work: Vec<Repeat<Inst>>,

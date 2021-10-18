@@ -1,3 +1,4 @@
+use codespan_reporting::diagnostic::{Diagnostic, Label};
 use num_bigint::BigUint;
 use num_integer::Roots;
 use num_traits::{NumOps, Zero};
@@ -302,40 +303,6 @@ impl Prog {
 
     #[must_use]
     pub fn inline_functions(mut self) -> Self {
-        fn target_index_set(inst_vec: &[Inst]) -> HashSet<IndexV2> {
-            let mut output = HashSet::new();
-            for inst in inst_vec {
-                match inst {
-                    Inst::Add { target, .. }
-                    | Inst::Sub { target, .. }
-                    | Inst::Set { target, .. }
-                    | Inst::Copy { target, .. }
-                    | Inst::Call { target, .. }
-                    | Inst::Merge { target, .. } => {
-                        if !output.contains(target) {
-                            output.insert(target.clone());
-                        }
-                    }
-
-                    Inst::Split { left, right, .. } => {
-                        if !output.contains(left) {
-                            output.insert(left.clone());
-                        }
-
-                        if !output.contains(right) {
-                            output.insert(right.clone());
-                        }
-                    }
-
-                    Inst::Block { inner, .. }
-                    | Inst::While { inner, .. }
-                    | Inst::For { inner, .. } => output.extend(target_index_set(&inner)),
-                }
-            }
-
-            output
-        }
-
         fn recurse(
             inst_vec: &mut Vec<Inst>,
             funs: &mut HashMap<IndexV2, ValueV2>,
@@ -822,6 +789,75 @@ impl Prog {
         recurse(&mut self.inst, &reserved, &mut next_available);
         self
     }
+
+    pub fn check_loops(&self, file_id: usize) -> Vec<Diagnostic<usize>> {
+        fn recurse(inst_slice: &[Inst], file_id: usize, warnings: &mut Vec<Diagnostic<usize>>) {
+            for inst in inst_slice {
+                match inst {
+                    Inst::While { cond, inner, span } => {
+                        let targets = target_index_set(inner);
+
+                        if !targets.contains(cond) {
+                            warnings.push(Diagnostic::warning()
+                                .with_message("While loop will never terminate")
+                                .with_labels(vec![
+                                    Label::primary(file_id, span.clone())
+                                    .with_message(format!(
+                                        "loop only terminates once {0:} reaches zero, but {0:} is never updated in the loop body",
+                                        cond
+                                    ))
+                                ])
+                            );
+                        }
+                    }
+
+                    Inst::Block { inner, .. } | Inst::For { inner, .. } => {
+                        recurse(inner, file_id, warnings);
+                    }
+
+                    _ => (),
+                }
+            }
+        }
+
+        let mut warnings = Vec::new();
+        recurse(&self.inst, file_id, &mut warnings);
+        warnings
+    }
+}
+
+fn target_index_set(inst_vec: &[Inst]) -> HashSet<IndexV2> {
+    let mut output = HashSet::new();
+    for inst in inst_vec {
+        match inst {
+            Inst::Add { target, .. }
+            | Inst::Sub { target, .. }
+            | Inst::Set { target, .. }
+            | Inst::Copy { target, .. }
+            | Inst::Call { target, .. }
+            | Inst::Merge { target, .. } => {
+                if !output.contains(target) {
+                    output.insert(target.clone());
+                }
+            }
+
+            Inst::Split { left, right, .. } => {
+                if !output.contains(left) {
+                    output.insert(left.clone());
+                }
+
+                if !output.contains(right) {
+                    output.insert(right.clone());
+                }
+            }
+
+            Inst::Block { inner, .. } | Inst::While { inner, .. } | Inst::For { inner, .. } => {
+                output.extend(target_index_set(&inner))
+            }
+        }
+    }
+
+    output
 }
 
 impl fmt::Display for Prog {

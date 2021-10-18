@@ -54,9 +54,16 @@ fn main() {
 
     match args.subcmd {
         SubCommand::Check { .. } => {
-            if let Err(error) = compile(&code, file_id) {
-                term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
-                return;
+            let prog = match compile(&code, file_id) {
+                Ok(s) => s,
+                Err(error) => {
+                    term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
+                    return;
+                }
+            };
+
+            for lint in prog.check_loops(file_id) {
+                term::emit(&mut writer.lock(), &config, &files, &lint).unwrap();
             }
         }
         SubCommand::Run { .. } => {
@@ -67,6 +74,10 @@ fn main() {
                     return;
                 }
             };
+
+            for lint in prog.check_loops(file_id) {
+                term::emit(&mut writer.lock(), &config, &files, &lint).unwrap();
+            }
 
             #[derive(Clone)]
             struct Stats {
@@ -161,6 +172,10 @@ fn main() {
                 }
             };
 
+            for lint in prog.check_loops(file_id) {
+                term::emit(&mut writer.lock(), &config, &files, &lint).unwrap();
+            }
+
             let mut ev = Evaluator::new(prog);
             let mut stdin = std::io::stdin();
 
@@ -196,6 +211,10 @@ fn main() {
                     return;
                 }
             };
+
+            for lint in prog.check_loops(file_id) {
+                term::emit(&mut writer.lock(), &config, &files, &lint).unwrap();
+            }
 
             let prog = prog
                 .inline_functions()

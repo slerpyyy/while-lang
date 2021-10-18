@@ -358,7 +358,9 @@ fn parse_recursive(
 
                 let inner = parse_recursive(&mut tokens, file_id)?;
 
-                if tokens.next().map(|t| t.kind) != Some(TokenKind::Od) {
+                let close =
+                    diag_unwarp(tokens.next(), file_id, while_span.start..open.span.end)?;
+                if close.kind != TokenKind::Od {
                     return Err(Diagnostic::error()
                         .with_message("Body of `while` loop is never closed")
                         .with_labels(vec![Label::primary(file_id, open.span)
@@ -368,7 +370,7 @@ fn parse_recursive(
                 let block = Inst::While {
                     cond,
                     inner,
-                    span: while_span.start..open.span.end,
+                    span: while_span.start..close.span.end,
                 };
                 out.push(block);
             }
@@ -422,7 +424,7 @@ fn parse_recursive(
                 let block = Inst::For {
                     num,
                     inner,
-                    span: for_span.start..do_token.span.end,
+                    span: for_span.start..od_token.span.end,
                 };
                 out.push(block);
             }
