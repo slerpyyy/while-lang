@@ -617,7 +617,7 @@ pub fn parse(
 }
 
 pub fn compile(code: &str, file_id: usize) -> Result<Prog, Vec<Diagnostic<usize>>> {
-    let tokens = lex(code, file_id).map_err(|err| vec![err])?;
+    let tokens = lex(code, file_id)?;
     let prog = parse(tokens, file_id)?;
     Ok(prog)
 }
