@@ -56,8 +56,10 @@ fn main() {
         SubCommand::Check { .. } => {
             let prog = match compile(&code, file_id) {
                 Ok(s) => s,
-                Err(error) => {
-                    term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
+                Err(errors) => {
+                    for error in errors {
+                        term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
+                    }
                     return;
                 }
             };
@@ -69,8 +71,10 @@ fn main() {
         SubCommand::Run { .. } => {
             let prog = match compile(&code, file_id) {
                 Ok(s) => s,
-                Err(error) => {
-                    term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
+                Err(errors) => {
+                    for error in errors {
+                        term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
+                    }
                     return;
                 }
             };
@@ -166,8 +170,10 @@ fn main() {
         SubCommand::Debug { .. } => {
             let prog = match compile(&code, file_id) {
                 Ok(s) => s,
-                Err(error) => {
-                    term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
+                Err(errors) => {
+                    for error in errors {
+                        term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
+                    }
                     return;
                 }
             };
@@ -206,8 +212,10 @@ fn main() {
         SubCommand::Rewrite { .. } => {
             let prog = match compile(&code, file_id) {
                 Ok(s) => s,
-                Err(error) => {
-                    term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
+                Err(errors) => {
+                    for error in errors {
+                        term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
+                    }
                     return;
                 }
             };

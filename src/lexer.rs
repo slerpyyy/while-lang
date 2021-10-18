@@ -32,17 +32,26 @@ pub enum TokenKind {
 pub struct Token {
     pub kind: TokenKind,
     pub span: Range<usize>,
+    pub file_id: usize,
 }
 
 impl Token {
     #[must_use]
-    pub const fn new(kind: TokenKind, span: Range<usize>) -> Self {
-        Self { kind, span }
+    pub const fn new(kind: TokenKind, span: Range<usize>, file_id: usize) -> Self {
+        Self {
+            kind,
+            span,
+            file_id,
+        }
     }
 
     #[must_use]
     pub const fn no_span(kind: TokenKind) -> Self {
-        Self { kind, span: 0..0 }
+        Self {
+            kind,
+            span: 0..0,
+            file_id: 0,
+        }
     }
 
     #[must_use]
@@ -295,7 +304,7 @@ pub fn lex(code: &str, file_id: usize) -> Result<Vec<Token>, Diagnostic<usize>> 
             }
         };
 
-        out.push(Token::new(kind, start..pos));
+        out.push(Token::new(kind, start..pos, file_id));
     }
 
     Ok(out)
@@ -312,26 +321,29 @@ mod test {
 
         assert_eq!(
             tokens.next(),
-            Some(Token::new(TokenKind::Var(0_u8.into()), 0..2))
+            Some(Token::new(TokenKind::Var(0_u8.into()), 0..2, 0))
         );
-        assert_eq!(tokens.next(), Some(Token::new(TokenKind::Eq, 3..5)));
+        assert_eq!(tokens.next(), Some(Token::new(TokenKind::Eq, 3..5, 0)));
         assert_eq!(
             tokens.next(),
-            Some(Token::new(TokenKind::Const(32_u8.into()), 6..8))
-        );
-        assert_eq!(tokens.next(), Some(Token::new(TokenKind::Semicolon, 8..9)));
-        assert_eq!(
-            tokens.next(),
-            Some(Token::new(TokenKind::Var(16_u8.into()), 10..13))
-        );
-        assert_eq!(tokens.next(), Some(Token::new(TokenKind::Eq, 14..16)));
-        assert_eq!(
-            tokens.next(),
-            Some(Token::new(TokenKind::Const(25_u8.into()), 17..19))
+            Some(Token::new(TokenKind::Const(32_u8.into()), 6..8, 0))
         );
         assert_eq!(
             tokens.next(),
-            Some(Token::new(TokenKind::Semicolon, 19..20))
+            Some(Token::new(TokenKind::Semicolon, 8..9, 0))
+        );
+        assert_eq!(
+            tokens.next(),
+            Some(Token::new(TokenKind::Var(16_u8.into()), 10..13, 0))
+        );
+        assert_eq!(tokens.next(), Some(Token::new(TokenKind::Eq, 14..16, 0)));
+        assert_eq!(
+            tokens.next(),
+            Some(Token::new(TokenKind::Const(25_u8.into()), 17..19, 0))
+        );
+        assert_eq!(
+            tokens.next(),
+            Some(Token::new(TokenKind::Semicolon, 19..20, 0))
         );
     }
 

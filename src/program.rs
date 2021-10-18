@@ -71,18 +71,19 @@ pub enum Inst {
 }
 
 impl Inst {
-    pub fn span(&self) -> &Range<usize> {
+    #[must_use]
+    pub const fn span(&self) -> &Range<usize> {
         match self {
-            Inst::Add { span, .. } => span,
-            Inst::Sub { span, .. } => span,
-            Inst::Set { span, .. } => span,
-            Inst::Copy { span, .. } => span,
-            Inst::Merge { span, .. } => span,
-            Inst::Split { span, .. } => span,
-            Inst::Call { span, .. } => span,
-            Inst::Block { span, .. } => span,
-            Inst::While { span, .. } => span,
-            Inst::For { span, .. } => span,
+            Inst::Add { span, .. }
+            | Inst::Sub { span, .. }
+            | Inst::Set { span, .. }
+            | Inst::Copy { span, .. }
+            | Inst::Merge { span, .. }
+            | Inst::Split { span, .. }
+            | Inst::Call { span, .. }
+            | Inst::Block { span, .. }
+            | Inst::While { span, .. }
+            | Inst::For { span, .. } => span,
         }
     }
 }
@@ -131,7 +132,7 @@ impl Prog {
                     Inst::Set { target, value, .. } => {
                         check(target, highest);
                         if let ValueV2::Prog(Prog { inst }) = value {
-                            recurse(inst, highest)
+                            recurse(inst, highest);
                         }
                     }
                     Inst::Copy { target, source, .. } => {
@@ -777,7 +778,7 @@ impl Prog {
                         *next_available += 1_u8;
                     }
                     Inst::Block { inner, .. } | Inst::While { inner, .. } => {
-                        recurse(inner, reserved, next_available)
+                        recurse(inner, reserved, next_available);
                     }
                     _ => (),
                 }
@@ -790,6 +791,7 @@ impl Prog {
         self
     }
 
+    #[must_use]
     pub fn check_loops(&self, file_id: usize) -> Vec<Diagnostic<usize>> {
         fn recurse(inst_slice: &[Inst], file_id: usize, warnings: &mut Vec<Diagnostic<usize>>) {
             for inst in inst_slice {
@@ -803,7 +805,7 @@ impl Prog {
                                 .with_labels(vec![
                                     Label::primary(file_id, span.clone())
                                     .with_message(format!(
-                                        "loop only terminates once {0:} reaches zero, but {0:} is never updated in the loop body",
+                                        "loop only terminates once `{0:}` reaches zero,\nbut `{0:}` is never updated in the loop body",
                                         cond
                                     ))
                                 ])
@@ -852,7 +854,7 @@ fn target_index_set(inst_vec: &[Inst]) -> HashSet<IndexV2> {
             }
 
             Inst::Block { inner, .. } | Inst::While { inner, .. } | Inst::For { inner, .. } => {
-                output.extend(target_index_set(&inner))
+                output.extend(target_index_set(inner));
             }
         }
     }
