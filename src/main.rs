@@ -1,5 +1,7 @@
 use std::{
+    convert::{TryFrom, TryInto},
     io::Read,
+    str::FromStr,
     sync::{Arc, Condvar, Mutex},
     time::{Duration, Instant},
 };
@@ -12,7 +14,8 @@ use codespan_reporting::{
         termcolor::{ColorChoice, StandardStream},
     },
 };
-use while_lang::{compile, Evaluator};
+use num_bigint::BigUint;
+use while_lang::{compile, Evaluator, Prog};
 
 #[derive(Clap, Debug, Clone)]
 #[clap(version, about)]
@@ -27,12 +30,21 @@ struct Args {
 enum SubCommand {
     #[clap(about = "Check if a given program is well-formed without running it")]
     Check { input_file: String },
+
     #[clap(about = "Run a given program")]
     Run { input_file: String },
+
     #[clap(about = "Evaluate a program one instruction at a time")]
     Debug { input_file: String },
+
     #[clap(about = "Translate a program into a pure WHILE program (experimental)")]
     Rewrite { input_file: String },
+
+    #[clap(about = "Translate a program into its Gödel number")]
+    Encode { input_file: String },
+
+    #[clap(about = "Translate a Gödel number into a while program")]
+    Decode { input_file: String },
 }
 
 fn main() {
@@ -42,29 +54,43 @@ fn main() {
     let writer = StandardStream::stderr(ColorChoice::Always);
     let config = codespan_reporting::term::Config::default();
 
-    let input_file = match args.subcmd.clone() {
+    let (prog, code) = match args.subcmd.clone() {
         SubCommand::Check { input_file }
         | SubCommand::Run { input_file }
         | SubCommand::Debug { input_file }
-        | SubCommand::Rewrite { input_file } => input_file,
-    };
+        | SubCommand::Rewrite { input_file }
+        | SubCommand::Encode { input_file } => {
+            let code = std::fs::read_to_string(&input_file).unwrap();
+            let file_id = files.add(&input_file, &code);
 
-    let code = std::fs::read_to_string(&input_file).unwrap();
-    let file_id = files.add(&input_file, &code);
+            let prog = match compile(&code, file_id) {
+                Ok(s) => s,
+                Err(errors) => {
+                    for error in errors {
+                        term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
+                    }
+                    return;
+                }
+            };
 
-    let prog = match compile(&code, file_id) {
-        Ok(s) => s,
-        Err(errors) => {
-            for error in errors {
-                term::emit(&mut writer.lock(), &config, &files, &error).unwrap();
+            for lint in prog.check_loops(file_id) {
+                term::emit(&mut writer.lock(), &config, &files, &lint).unwrap();
             }
+
+            (prog, code)
+        }
+
+        SubCommand::Decode { input_file } => {
+            let mut text = std::fs::read_to_string(&input_file).unwrap();
+            text.retain(|c| matches!(c, '0'..='9'));
+
+            let num = BigUint::from_str(&text).unwrap();
+            let prog = Prog::try_from(num).unwrap().inline_blocks();
+            println!("{}", prog);
+
             return;
         }
     };
-
-    for lint in prog.check_loops(file_id) {
-        term::emit(&mut writer.lock(), &config, &files, &lint).unwrap();
-    }
 
     match args.subcmd {
         SubCommand::Check { .. } => (),
@@ -157,22 +183,29 @@ fn main() {
 
         SubCommand::Debug { .. } => {
             let mut ev = Evaluator::new(prog);
-            let mut stdin = std::io::stdin();
+            let mut wait_for_input = true;
 
             while ev.step() {
-                let _ = std::process::Command::new("cmd.exe")
-                    .arg("/c")
-                    .arg("cls")
-                    .status();
                 ev.debug_print(&code, 7);
 
-                stdin.read(&mut [0u8; 4]).unwrap();
+                if wait_for_input {
+                    let mut stdin = std::io::stdin();
+                    let mut buffer = [0u8; 4];
+                    stdin.read(&mut buffer).unwrap();
+
+                    if buffer.starts_with(b"q") {
+                        return;
+                    }
+
+                    if buffer.starts_with(b"r") {
+                        wait_for_input = false;
+                    }
+                }
+
+                // clear the screen
+                print!("\x1B[2J\x1B[1;1H");
             }
 
-            let _ = std::process::Command::new("cmd.exe")
-                .arg("/c")
-                .arg("cls")
-                .status();
             println!("{{");
             for (key, value) in ev.base.state.into_iter() {
                 if value.is_zero() {
@@ -195,5 +228,22 @@ fn main() {
 
             println!("{}", prog);
         }
+
+        SubCommand::Encode { .. } => {
+            let num: BigUint = prog
+                .inline_functions()
+                .shortcut_tuples()
+                .for_to_while()
+                .remove_unused()
+                .expand_copy()
+                .inline_blocks()
+                .reindex_vars()
+                .try_into()
+                .unwrap();
+
+            println!("{}", num);
+        }
+
+        SubCommand::Decode { .. } => unreachable!(),
     }
 }
